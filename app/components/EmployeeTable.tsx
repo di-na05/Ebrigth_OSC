@@ -8,10 +8,18 @@ interface Employee {
   employeeId: string;
   firstName: string;
   lastName: string;
+  gender: string;
+  nickName: string;
   email: string;
   phone: string;
+  nric: string;
+  dob: string;
+  homeAddress: string;
   branch: string;
   role: string;
+  contract: string;
+  startDate: string;
+  probation: string;
   accessStatus: string;
   biometricTemplate: string | null;
   registeredAt: string;
@@ -64,10 +72,10 @@ export default function EmployeeTable({
     try {
       const newStatus = currentStatus === "AUTHORIZED" ? "UNAUTHORIZED" : "AUTHORIZED";
 
-      const response = await fetch(`/api/employees/${employeeId}/access`, {
-        method: "POST",
+      const response = await fetch("/api/employees", {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessStatus: newStatus }),
+        body: JSON.stringify({ id: employeeId, accessStatus: newStatus }),
       });
 
       if (!response.ok) throw new Error("Failed to update access status");
@@ -80,6 +88,29 @@ export default function EmployeeTable({
       );
 
       alert(`Access ${newStatus.toLowerCase()} successfully`);
+    } catch (error) {
+      alert(`Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  };
+
+  const handleDelete = async (employeeId: string) => {
+    if (!confirm("Are you sure you want to delete this employee? This action cannot be undone.")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/employees?id=${employeeId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to delete employee");
+      }
+
+      // Remove employee from local state
+      setEmployees((prev) => prev.filter((emp) => emp.id !== employeeId));
+      alert("Employee deleted successfully");
     } catch (error) {
       alert(`Error: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
@@ -150,79 +181,81 @@ export default function EmployeeTable({
           <table className="w-full text-sm">
             <thead className="bg-gray-100 border-b">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                  Employee ID
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Name</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Email</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Phone</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Branch</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Role</th>
-                <th className="px-4 py-3 text-center font-semibold text-gray-700">
-                  Biometric
-                </th>
-                <th className="px-4 py-3 text-center font-semibold text-gray-700">
-                  Access Status
-                </th>
-                <th className="px-4 py-3 text-center font-semibold text-gray-700">
-                  Actions
-                </th>
+                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Employee ID</th>
+                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Full Name</th>
+                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Gender</th>
+                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Nick Name</th>
+                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Phone</th>
+                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">NRIC</th>
+                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">DOB</th>
+                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Home Address</th>
+                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Role</th>
+                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Contract</th>
+                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Branch/Dept</th>
+                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Start Date</th>
+                <th className="px-2 py-3 text-left font-semibold text-gray-700 text-xs">Probation</th>
+                <th className="px-2 py-3 text-center font-semibold text-gray-700 text-xs">Biometrics</th>
+                <th className="px-2 py-3 text-center font-semibold text-gray-700 text-xs">Actions</th>
               </tr>
             </thead>
             <tbody>
               {employees.map((employee) => (
                 <tr key={employee.id} className="border-b hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-900">
+                  <td className="px-2 py-3 font-medium text-gray-900 text-xs">
                     {employee.employeeId}
                   </td>
-                  <td className="px-4 py-3 text-gray-900">
+                  <td className="px-2 py-3 text-gray-900 text-xs">
                     {employee.firstName} {employee.lastName}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{employee.email}</td>
-                  <td className="px-4 py-3 text-gray-600">{employee.phone}</td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {getBranchLabel(employee.branch)}
+                  <td className="px-2 py-3 text-gray-600 text-xs">
+                    {employee.gender === "MALE" ? "Male" : employee.gender === "FEMALE" ? "Female" : "-"}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {getRoleLabel(employee.role)}
+                  <td className="px-2 py-3 text-gray-600 text-xs">{employee.nickName || "-"}</td>
+                  <td className="px-2 py-3 text-gray-600 text-xs">{employee.phone}</td>
+                  <td className="px-2 py-3 text-gray-600 text-xs">{employee.nric || "-"}</td>
+                  <td className="px-2 py-3 text-gray-600 text-xs">{employee.dob || "-"}</td>
+                  <td className="px-2 py-3 text-gray-600 text-xs max-w-[150px] truncate" title={employee.homeAddress}>
+                    {employee.homeAddress || "-"}
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-2 py-3 text-gray-600 text-xs">{getRoleLabel(employee.role)}</td>
+                  <td className="px-2 py-3 text-gray-600 text-xs">
+                    {employee.contract === "PERMANENT" ? "Permanent" : employee.contract === "CONTRACT" ? "Contract" : employee.contract === "PART_TIME" ? "Part Time" : employee.contract === "INTERN" ? "Intern" : "-"}
+                  </td>
+                  <td className="px-2 py-3 text-gray-600 text-xs">{getBranchLabel(employee.branch)}</td>
+                  <td className="px-2 py-3 text-gray-600 text-xs">{employee.startDate || "-"}</td>
+                  <td className="px-2 py-3 text-gray-600 text-xs">{employee.probation || "-"}</td>
+                  <td className="px-2 py-3 text-center">
                     {employee.biometricTemplate ? (
-                      <span className="text-green-600 font-semibold">✓ Enrolled</span>
+                      <span className="text-green-600 font-semibold text-xs">✓</span>
                     ) : (
-                      <span className="text-red-600 font-semibold">✗ Not Enrolled</span>
+                      <span className="text-red-600 font-semibold text-xs">✗</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-center">
-                    <span
-                      className={`px-3 py-1 rounded-full text-white font-medium text-xs ${
-                        employee.accessStatus === "AUTHORIZED"
-                          ? "bg-green-600"
-                          : "bg-red-600"
-                      }`}
-                    >
-                      {employee.accessStatus}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center space-x-2">
+                  <td className="px-2 py-3 text-center space-x-1">
                     <button
                       onClick={() => onBiometricEnroll?.(employee.id)}
-                      className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs font-medium"
+                      className="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs font-medium"
                       disabled={!!employee.biometricTemplate}
                     >
-                      Biometric
+                      Bio
                     </button>
                     <button
                       onClick={() =>
                         handleAccessToggle(employee.id, employee.accessStatus)
                       }
-                      className={`px-3 py-1 rounded text-xs font-medium text-white ${
+                      className={`px-2 py-1 rounded text-xs font-medium text-white ${
                         employee.accessStatus === "AUTHORIZED"
                           ? "bg-orange-500 hover:bg-orange-600"
                           : "bg-green-500 hover:bg-green-600"
                       }`}
                     >
                       {employee.accessStatus === "AUTHORIZED" ? "Revoke" : "Grant"}
+                    </button>
+                    <button
+                      onClick={() => handleDelete(employee.id)}
+                      className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs font-medium"
+                    >
+                      Delete
                     </button>
                   </td>
                 </tr>

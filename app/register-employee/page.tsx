@@ -13,7 +13,7 @@ export default function RegisterPage() {
       <header className="bg-gradient-to-r from-blue-600 to-blue-800 text-white shadow-lg">
         <div className="flex justify-between items-center px-4 py-6">
           <div>
-            <h1 className="text-3xl font-bold">Register New Employee</h1>
+            <h1 className="text-3xl font-bold">Add User</h1>
             <p className="text-blue-100 mt-1">Add new employees to the system</p>
           </div>
           <UserHeader userName="Admin User" userRole="SUPER_ADMIN" userEmail="admin@ebright.com" />

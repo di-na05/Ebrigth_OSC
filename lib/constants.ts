@@ -11,11 +11,23 @@ export const ROLE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "INDUSTRIAL_PSYCHOLOGY", label: "Industrial Psychology" },
 ];
 
+export const CONTRACT_OPTIONS = [
+  { value: "PERMANENT", label: "Permanent" },
+  { value: "CONTRACT", label: "Contract" },
+  { value: "PART_TIME", label: "Part Time" },
+  { value: "INTERN", label: "Intern" },
+];
+
 export const BRANCH_OPTIONS = [
   { value: "HQ", label: "Headquarters" },
   { value: "BR", label: "Branch 1" },
   { value: "BR2", label: "Branch 2" },
   { value: "BR3", label: "Branch 3" },
+];
+
+export const GENDER_OPTIONS = [
+  { value: "MALE", label: "Male" },
+  { value: "FEMALE", label: "Female" },
 ];
 
 export function getRoleLabel(role: string): string {
@@ -26,4 +38,14 @@ export function getRoleLabel(role: string): string {
 export function getBranchLabel(branch: string): string {
   const option = BRANCH_OPTIONS.find((opt) => opt.value === branch);
   return option?.label || branch;
+}
+
+export function getContractLabel(contract: string): string {
+  const option = CONTRACT_OPTIONS.find((opt) => opt.value === contract);
+  return option?.label || contract;
+}
+
+export function getGenderLabel(gender: string): string {
+  const option = GENDER_OPTIONS.find((opt) => opt.value === gender);
+  return option?.label || gender;
 }

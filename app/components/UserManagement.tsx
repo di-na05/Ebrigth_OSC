@@ -7,11 +7,20 @@ interface User {
   employeeId: string;
   firstName: string;
   lastName: string;
+  gender: string;
+  nickName: string;
   email: string;
   phone: string;
+  nric: string;
+  dob: string;
+  homeAddress: string;
   branch: string;
   role: string;
+  contract: string;
+  startDate: string;
+  probation: string;
   accessStatus: string;
+  biometricTemplate: string | null;
   registeredAt: string;
   updatedAt: string;
 }
@@ -118,7 +127,7 @@ export default function UserManagement({ userRole = "SUPER_ADMIN" }: UserManagem
           <p className="text-lg font-semibold text-gray-900 mb-2">Access Denied</p>
           <p className="text-gray-600 mb-6">You do not have permission to access User Management. This feature is only available for Super Administrators.</p>
           <a
-            href="/dashboard"
+            href="/dashboard-employee-management"
             className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg transition-colors"
           >
             Back to Dashboard
@@ -233,6 +242,31 @@ export default function UserManagement({ userRole = "SUPER_ADMIN" }: UserManagem
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Gender</label>
+                      <select
+                        name="gender"
+                        value={editData?.gender || "MALE"}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="MALE">Male</option>
+                        <option value="FEMALE">Female</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Nick Name</label>
+                      <input
+                        type="text"
+                        name="nickName"
+                        value={editData?.nickName || ""}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
                     <input
@@ -256,11 +290,95 @@ export default function UserManagement({ userRole = "SUPER_ADMIN" }: UserManagem
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Branch</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">NRIC</label>
+                      <input
+                        type="text"
+                        name="nric"
+                        value={editData?.nric || ""}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Date of Birth</label>
+                      <input
+                        type="date"
+                        name="dob"
+                        value={editData?.dob || ""}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Branch/Dept</label>
                       <input
                         type="text"
                         name="branch"
                         value={editData?.branch || ""}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Home Address</label>
+                    <input
+                      type="text"
+                      name="homeAddress"
+                      value={editData?.homeAddress || ""}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Role</label>
+                      <input
+                        type="text"
+                        name="role"
+                        value={editData?.role || ""}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Contract</label>
+                      <select
+                        name="contract"
+                        value={editData?.contract || "PERMANENT"}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="PERMANENT">Permanent</option>
+                        <option value="CONTRACT">Contract</option>
+                        <option value="PART_TIME">Part Time</option>
+                        <option value="INTERN">Intern</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Start Date</label>
+                      <input
+                        type="date"
+                        name="startDate"
+                        value={editData?.startDate || ""}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Probation</label>
+                      <input
+                        type="date"
+                        name="probation"
+                        value={editData?.probation || ""}
                         onChange={handleInputChange}
                         className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
@@ -306,20 +424,64 @@ export default function UserManagement({ userRole = "SUPER_ADMIN" }: UserManagem
                       <p className="text-lg font-medium text-gray-900">{selectedUser.employeeId}</p>
                     </div>
                     <div className="bg-gray-50 p-4 rounded">
-                      <label className="text-sm font-semibold text-gray-600">Email</label>
-                      <p className="text-lg font-medium text-gray-900 break-all">{selectedUser.email}</p>
+                      <label className="text-sm font-semibold text-gray-600">Full Name</label>
+                      <p className="text-lg font-medium text-gray-900">{selectedUser.firstName} {selectedUser.lastName}</p>
                     </div>
                     <div className="bg-gray-50 p-4 rounded">
-                      <label className="text-sm font-semibold text-gray-600">Phone</label>
+                      <label className="text-sm font-semibold text-gray-600">Gender</label>
+                      <p className="text-lg font-medium text-gray-900">{selectedUser.gender === "MALE" ? "Male" : selectedUser.gender === "FEMALE" ? "Female" : "-"}</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded">
+                      <label className="text-sm font-semibold text-gray-600">Nick Name</label>
+                      <p className="text-lg font-medium text-gray-900">{selectedUser.nickName || "-"}</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded">
+                      <label className="text-sm font-semibold text-gray-600">Phone Number</label>
                       <p className="text-lg font-medium text-gray-900">{selectedUser.phone}</p>
                     </div>
                     <div className="bg-gray-50 p-4 rounded">
-                      <label className="text-sm font-semibold text-gray-600">Branch</label>
-                      <p className="text-lg font-medium text-gray-900">{selectedUser.branch}</p>
+                      <label className="text-sm font-semibold text-gray-600">NRIC</label>
+                      <p className="text-lg font-medium text-gray-900">{selectedUser.nric || "-"}</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded">
+                      <label className="text-sm font-semibold text-gray-600">Date of Birth</label>
+                      <p className="text-lg font-medium text-gray-900">{selectedUser.dob || "-"}</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded">
+                      <label className="text-sm font-semibold text-gray-600">Home Address</label>
+                      <p className="text-lg font-medium text-gray-900">{selectedUser.homeAddress || "-"}</p>
                     </div>
                     <div className="bg-gray-50 p-4 rounded">
                       <label className="text-sm font-semibold text-gray-600">Role</label>
                       <p className="text-lg font-medium text-gray-900">{selectedUser.role}</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded">
+                      <label className="text-sm font-semibold text-gray-600">Contract</label>
+                      <p className="text-lg font-medium text-gray-900">
+                        {selectedUser.contract === "PERMANENT" ? "Permanent" : selectedUser.contract === "CONTRACT" ? "Contract" : selectedUser.contract === "PART_TIME" ? "Part Time" : selectedUser.contract === "INTERN" ? "Intern" : "-"}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded">
+                      <label className="text-sm font-semibold text-gray-600">Branch/Dept</label>
+                      <p className="text-lg font-medium text-gray-900">{selectedUser.branch}</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded">
+                      <label className="text-sm font-semibold text-gray-600">Start Date</label>
+                      <p className="text-lg font-medium text-gray-900">{selectedUser.startDate || "-"}</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded">
+                      <label className="text-sm font-semibold text-gray-600">Probation</label>
+                      <p className="text-lg font-medium text-gray-900">{selectedUser.probation || "-"}</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded">
+                      <label className="text-sm font-semibold text-gray-600">Biometrics</label>
+                      <p className="text-lg font-medium text-gray-900">
+                        {selectedUser.biometricTemplate ? "✓ Enrolled" : "✗ Not Enrolled"}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded">
+                      <label className="text-sm font-semibold text-gray-600">Email</label>
+                      <p className="text-lg font-medium text-gray-900 break-all">{selectedUser.email}</p>
                     </div>
                     <div className="bg-gray-50 p-4 rounded">
                       <label className="text-sm font-semibold text-gray-600">Registered On</label>

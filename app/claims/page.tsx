@@ -161,7 +161,7 @@ export default function ClaimsPage() {
                     <h2 className="text-4xl font-black text-slate-900 tracking-tight">What are we filing today?</h2>
                     <p className="text-slate-500 text-lg font-medium italic">Select your claim category to begin the workflow.</p>
                   </div>
-                  <Link href="/dashboard" className="px-6 py-3 rounded-2xl bg-white shadow-sm border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all flex items-center gap-2">
+                  <Link href="/dashboard-employee-management" className="px-6 py-3 rounded-2xl bg-white shadow-sm border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all flex items-center gap-2">
                     ← <span className="mb-0.5">Dashboard</span>
                   </Link>
                 </div>

@@ -1,51 +1,27 @@
 import { NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 
-// In-memory employee storage (in production, this would be a database)
-// eslint-disable-next-line prefer-const
-let employees = [
-  {
-    id: "1",
-    employeeId: "HQ-001",
-    firstName: "Admin",
-    lastName: "User",
-    email: "admin@ebright.com",
-    phone: "+1-555-0001",
-    branch: "HQ",
-    role: "SUPER_ADMIN",
-    accessStatus: "AUTHORIZED",
-    registeredAt: new Date("2025-01-01").toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "2",
-    employeeId: "HQ-002",
-    firstName: "Sarah",
-    lastName: "Johnson",
-    email: "sarah.johnson@company.com",
-    phone: "+1-555-0002",
-    branch: "HQ",
-    role: "HUMAN_RESOURCES",
-    accessStatus: "AUTHORIZED",
-    registeredAt: new Date("2025-01-05").toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "3",
-    employeeId: "HQ-003",
-    firstName: "Michael",
-    lastName: "Chen",
-    email: "michael.chen@company.com",
-    phone: "+1-555-0003",
-    branch: "HQ",
-    role: "FINANCE",
-    accessStatus: "AUTHORIZED",
-    registeredAt: new Date("2025-01-10").toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
+const dataFilePath = path.join(process.cwd(), 'data', 'employees.json');
+
+// Helper to read employees from file
+function readEmployees() {
+  try {
+    const data = fs.readFileSync(dataFilePath, 'utf-8');
+    return JSON.parse(data);
+  } catch (error) {
+    // If file doesn't exist, return empty array
+    return [];
+  }
+}
+
+// Helper to write employees to file
+function writeEmployees(employees: any[]) {
+  fs.writeFileSync(dataFilePath, JSON.stringify(employees, null, 2));
+}
 
 // Helper to generate employee ID based on branch
-function generateEmployeeId(branch: string): string {
+function generateEmployeeId(employees: any[], branch: string): string {
   const branchPrefix = branch === "HQ" ? "HQ" : branch.substring(0, 2).toUpperCase();
   const branchEmployees = employees.filter((e) => e.employeeId.startsWith(branchPrefix));
   const nextNumber = branchEmployees.length + 1;
@@ -53,13 +29,99 @@ function generateEmployeeId(branch: string): string {
 }
 
 // Helper to generate unique ID
-function generateId(): string {
+function generateId(employees: any[]): string {
   return (employees.length + 1).toString();
 }
 
 export async function GET() {
-  // Return all employees (registered + initial sample data)
+  const employees = readEmployees();
   return NextResponse.json(employees);
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "Employee ID is required" },
+        { status: 400 }
+      );
+    }
+
+    let employees = readEmployees();
+    const employeeIndex = employees.findIndex((e) => e.id === id);
+
+    if (employeeIndex === -1) {
+      return NextResponse.json(
+        { error: "Employee not found" },
+        { status: 404 }
+      );
+    }
+
+    // Remove employee from the array
+    const deletedEmployee = employees.splice(employeeIndex, 1)[0];
+    
+    // Save to file
+    writeEmployees(employees);
+
+    return NextResponse.json({
+      message: "Employee deleted successfully",
+      data: deletedEmployee,
+    });
+  } catch (error) {
+    console.error("Error deleting employee:", error);
+    return NextResponse.json(
+      { error: "Failed to delete employee" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json();
+    const { id, ...updateData } = body;
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "Employee ID is required" },
+        { status: 400 }
+      );
+    }
+
+    let employees = readEmployees();
+    const employeeIndex = employees.findIndex((e) => e.id === id);
+
+    if (employeeIndex === -1) {
+      return NextResponse.json(
+        { error: "Employee not found" },
+        { status: 404 }
+      );
+    }
+
+    // Update employee
+    employees[employeeIndex] = {
+      ...employees[employeeIndex],
+      ...updateData,
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Save to file
+    writeEmployees(employees);
+
+    return NextResponse.json({
+      message: "Employee updated successfully",
+      data: employees[employeeIndex],
+    });
+  } catch (error) {
+    console.error("Error updating employee:", error);
+    return NextResponse.json(
+      { error: "Failed to update employee" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(request: Request) {
@@ -67,7 +129,7 @@ export async function POST(request: Request) {
     const body = await request.json();
 
     // Validate required fields
-    const { firstName, lastName, email, phone, branch, role } = body;
+    const { firstName, lastName, email, phone, branch, role, gender, nickName, nric, dob, homeAddress, contract, startDate, probation } = body;
 
     if (!firstName || !lastName || !email || !phone || !branch || !role) {
       return NextResponse.json(
@@ -75,6 +137,8 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    let employees = readEmployees();
 
     // Check if email already exists
     if (employees.some((e) => e.email === email)) {
@@ -86,21 +150,33 @@ export async function POST(request: Request) {
 
     // Create new employee object
     const newEmployee = {
-      id: generateId(),
-      employeeId: generateEmployeeId(branch),
+      id: generateId(employees),
+      employeeId: generateEmployeeId(employees, branch),
       firstName,
       lastName,
-      email,
+      gender: gender || "MALE",
+      nickName: nickName || "",
       phone,
+      nric: nric || "",
+      dob: dob || "",
+      homeAddress: homeAddress || "",
       branch,
       role,
+      contract: contract || "PERMANENT",
+      startDate: startDate || "",
+      probation: probation || "",
+      biometricTemplate: null,
       accessStatus: "AUTHORIZED",
+      email,
       registeredAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
-    // Add to employees list
+    // Add to employees array
     employees.push(newEmployee);
+
+    // Save to file
+    writeEmployees(employees);
 
     return NextResponse.json(
       {

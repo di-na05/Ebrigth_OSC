@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BRANCH_OPTIONS, ROLE_OPTIONS } from "@/lib/constants";
+import { BRANCH_OPTIONS, ROLE_OPTIONS, CONTRACT_OPTIONS, GENDER_OPTIONS } from "@/lib/constants";
 
 interface RegistrationFormProps {
   onSuccess?: () => void;
@@ -17,10 +17,18 @@ export default function RegistrationForm({
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
+    gender: "MALE",
+    nickName: "",
     email: "",
     phone: "",
+    nric: "",
+    dob: "",
+    homeAddress: "",
     branch: "HQ",
     role: "EMPLOYEE",
+    contract: "PERMANENT",
+    startDate: "",
+    probation: "",
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -94,10 +102,18 @@ export default function RegistrationForm({
       setFormData({
         firstName: "",
         lastName: "",
+        gender: "MALE",
+        nickName: "",
         email: "",
         phone: "",
+        nric: "",
+        dob: "",
+        homeAddress: "",
         branch: "HQ",
         role: "EMPLOYEE",
+        contract: "PERMANENT",
+        startDate: "",
+        probation: "",
       });
 
       // Show success message with employee ID
@@ -115,7 +131,7 @@ export default function RegistrationForm({
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-2xl font-bold mb-6 text-gray-800">Register New Employee</h2>
+      <h2 className="text-2xl font-bold mb-6 text-gray-800">Add User</h2>
 
       {successMessage && (
         <div className="mb-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">
@@ -165,6 +181,42 @@ export default function RegistrationForm({
             {errors.lastName && (
               <p className="text-red-500 text-sm mt-1">{errors.lastName}</p>
             )}
+          </div>
+
+          {/* Gender */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Gender
+            </label>
+            <select
+              name="gender"
+              value={formData.gender}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={submitting || isLoading}
+            >
+              {GENDER_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Nick Name */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Nick Name
+            </label>
+            <input
+              type="text"
+              name="nickName"
+              value={formData.nickName}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Enter nick name"
+              disabled={submitting || isLoading}
+            />
           </div>
 
           {/* Email */}
@@ -247,6 +299,103 @@ export default function RegistrationForm({
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Contract */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Contract
+            </label>
+            <select
+              name="contract"
+              value={formData.contract}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={submitting || isLoading}
+            >
+              {CONTRACT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Start Date */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Start Date
+            </label>
+            <input
+              type="date"
+              name="startDate"
+              value={formData.startDate}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={submitting || isLoading}
+            />
+          </div>
+
+          {/* Probation */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Probation
+            </label>
+            <input
+              type="date"
+              name="probation"
+              value={formData.probation}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={submitting || isLoading}
+            />
+          </div>
+
+          {/* NRIC */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              NRIC
+            </label>
+            <input
+              type="text"
+              name="nric"
+              value={formData.nric}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Enter NRIC"
+              disabled={submitting || isLoading}
+            />
+          </div>
+
+          {/* DOB */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Date of Birth
+            </label>
+            <input
+              type="date"
+              name="dob"
+              value={formData.dob}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={submitting || isLoading}
+            />
+          </div>
+
+          {/* Home Address */}
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Home Address
+            </label>
+            <input
+              type="text"
+              name="homeAddress"
+              value={formData.homeAddress}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Enter home address"
+              disabled={submitting || isLoading}
+            />
           </div>
         </div>
 
