@@ -2,13 +2,12 @@ import fs from 'fs';
 import { parse } from 'csv-parse/sync';
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url: 'postgresql://optidept:ebrightoptidept2025@103.209.156.174:5433/ebright_hrfs?schema=public'
-    }
-  }
-});
+if (!process.env.DATABASE_URL) {
+  console.error('ERROR: DATABASE_URL environment variable is not set.');
+  process.exit(1);
+}
+
+const prisma = new PrismaClient();
 
 const BRANCH_CODE_MAP = {
   'amp':  'Ampang',
@@ -34,10 +33,13 @@ const BRANCH_CODE_MAP = {
 };
 
 async function main() {
-  const csvContent = fs.readFileSync(
-    'C:\\Users\\NUR IRDINA\\Downloads\\user-export-273441891-69c75c40b61b9.csv',
-    'utf8'
-  );
+  const csvPath = process.env.CSV_PATH || process.argv[2];
+  if (!csvPath) {
+    console.error('ERROR: Provide the CSV path via CSV_PATH env var or as a command-line argument.');
+    console.error('  Usage: node scripts/import-staff.mjs /path/to/file.csv');
+    process.exit(1);
+  }
+  const csvContent = fs.readFileSync(csvPath, 'utf8');
 
   const records = parse(csvContent, {
     columns: true,

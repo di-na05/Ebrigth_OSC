@@ -21,10 +21,8 @@ export const authOptions: NextAuthOptions = {
 
         if (!user) return null;
 
-        // 2. Check Password (Includes a fallback for your plain-text HeidiSQL entry!)
-        const isPasswordValid = 
-          (await bcrypt.compare(credentials.password, user.passwordHash)) || 
-          (credentials.password === user.passwordHash);
+        // 2. Check Password
+        const isPasswordValid = await bcrypt.compare(credentials.password, user.passwordHash);
 
         if (!isPasswordValid) return null;
 
