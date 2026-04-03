@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { prisma } from '@/lib/prisma';
 
 const dataFilePath = path.join(process.cwd(), 'data', 'employees.json');
 
 // Helper to read employees from file
-function readEmployees() {
+function readEmployees(): any[] {
   try {
     const data = fs.readFileSync(dataFilePath, 'utf-8');
     return JSON.parse(data);
@@ -34,8 +35,15 @@ function generateId(employees: any[]): string {
 }
 
 export async function GET() {
-  const employees = readEmployees();
-  return NextResponse.json(employees);
+  try {
+    const employees = await (prisma as any).employee.findMany({
+      select: { id: true, name: true, nickname: true, branch: true, position: true },
+      orderBy: { branch: 'asc' },
+    });
+    return NextResponse.json(employees);
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed to fetch employees' }, { status: 500 });
+  }
 }
 
 export async function DELETE(request: Request) {
