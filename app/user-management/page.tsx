@@ -111,7 +111,7 @@ export default function UserManagementPage() {
       </header>
 
       <div className="flex h-[calc(100vh-100px)]">
-        <Sidebar sidebarOpen={sidebarOpen} onCollapse={() => setSidebarOpen(false)} />
+        <Sidebar sidebarOpen={sidebarOpen} onToggle={() => setSidebarOpen(false)} />
 
         {!sidebarOpen && (
           <button

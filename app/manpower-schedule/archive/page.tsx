@@ -2,19 +2,16 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { format, parseISO, addDays, startOfWeek, endOfWeek } from "date-fns"; 
-import { DateRange, RangeKeyDict } from "react-date-range"; 
+import { format, parseISO, addDays, startOfWeek } from "date-fns";
 import { useSession } from "next-auth/react";
-import "react-date-range/dist/styles.css"; 
-import "react-date-range/dist/theme/default.css"; 
 import Sidebar from "@/app/components/Sidebar";
 
 // --- IMPORT SHARED CONSTANTS ---
 import {
-  COLUMNS, ALL_BRANCHES,
-  getTimeSlotsForDay, isAdminSlot, getEmployeeColor,
+  SHARED_EMPLOYEES, COLUMNS, ALL_BRANCHES,
+  getTimeSlotsForDay, isAdminSlot, getStaffColorByIndex,
   getWorkingDaysForBranch, isOpeningClosingSlot,
-  isManagerOnDutySlot, // <-- NEW IMPORT
+  isManagerOnDutySlot,
 } from "@/lib/manpowerUtils";
 
 
@@ -83,6 +80,7 @@ export default function ArchiveSchedulePage() {
   
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
+  const [selectedDay, setSelectedDay] = useState<string>("");
   const [history, setHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [branchStaffData, setBranchStaffData] = useState<Record<string, string[]>>({});
@@ -90,17 +88,9 @@ export default function ArchiveSchedulePage() {
   
   // --- FILTER STATES ---
   const [filterBranch, setFilterBranch] = useState<string>("");
-  const [filterDate, setFilterDate] = useState<string>(""); 
-  
-  // --- CALENDAR POPOVER STATES ---
-  const [showCalendar, setShowCalendar] = useState(false);
-  const [shownDate, setShownDate] = useState(new Date());
-  const [isDateFiltered, setIsDateFiltered] = useState(false);
-  const [range, setRange] = useState([{
-    startDate: new Date(),
-    endDate: new Date(),
-    key: "selection",
-  }]);
+  const [filterYear, setFilterYear] = useState<string>("");
+  const [filterMonth, setFilterMonth] = useState<string>("");
+  const [filterQuick, setFilterQuick] = useState<string>("");
 
   // --- FETCH DATA FROM POSTGRESQL ---
   useEffect(() => {
@@ -167,16 +157,19 @@ export default function ArchiveSchedulePage() {
 
   // --- APPLY FILTERS & ROLE SECURITY TO THE LIST ---
   const filteredHistory = useMemo(() => {
+    const today = new Date();
+    const thisMonday = format(startOfWeek(today, { weekStartsOn: 1 }), "yyyy-MM-dd");
+    const lastMonday = format(startOfWeek(addDays(today, -7), { weekStartsOn: 1 }), "yyyy-MM-dd");
     return history.filter((record: any) => {
-      // SECURITY FILTER: Branch Managers ONLY see their own branch!
-      if (userRole === "BRANCH_MANAGER" && record.branch !== userBranch) {
-        return false;
-      }
-      const matchBranch = filterBranch ? record.branch === filterBranch : true;
-      const matchWeek = filterDate ? record.startDate === filterDate : true;
-      return matchBranch && matchWeek;
+      if (userRole === "BRANCH_MANAGER" && record.branch !== userBranch) return false;
+      if (filterBranch && record.branch !== filterBranch) return false;
+      if (filterYear && format(parseISO(record.startDate), "yyyy") !== filterYear) return false;
+      if (filterMonth && format(parseISO(record.startDate), "yyyy-MM") !== `${filterYear || format(today, "yyyy")}-${filterMonth}`) return false;
+      if (filterQuick === "this-week" && record.startDate !== thisMonday) return false;
+      if (filterQuick === "last-week" && record.startDate !== lastMonday) return false;
+      return true;
     });
-  }, [history, filterBranch, filterDate, userRole, userBranch]);
+  }, [history, filterBranch, filterYear, filterMonth, filterQuick, userRole, userBranch]);
 
   // --- BULLETPROOF DATA SYNC ---
   const validData = useMemo(() => {
@@ -276,10 +269,32 @@ export default function ArchiveSchedulePage() {
           </div>
 
           <div className="flex-1 overflow-y-auto w-full mx-auto px-4 md:px-6 pb-20">
-            <div className="space-y-8">
-              {getWorkingDaysForBranch(selectedRecord.branch).map((day) => {
-                const slots = getTimeSlotsForDay(day, selectedRecord.branch);
+            <div className="space-y-6">
 
+              {/* DAY TAB BUTTONS */}
+              <div className="flex gap-2 flex-wrap">
+                {getWorkingDaysForBranch(selectedRecord.branch).map((day) => {
+                  const isActive = selectedDay === day;
+                  const validData = selectedRecord.selections || {};
+                  const hasData = Object.keys(validData).some(k => k.startsWith(`${day}-`));
+                  return (
+                    <button key={day} onClick={() => setSelectedDay(day)}
+                      className={`relative px-6 py-3 rounded-xl font-black uppercase text-sm tracking-wide transition-all shadow-sm ${
+                        isActive ? "bg-[#2D3F50] text-white shadow-lg scale-105"
+                        : hasData ? "bg-slate-100 text-slate-700 border-2 border-slate-400 hover:bg-slate-200"
+                        : "bg-white text-slate-400 border-2 border-slate-200 hover:bg-slate-50"
+                      }`}>
+                      {day.slice(0, 3)}
+                      {hasData && <span className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${isActive ? "bg-green-400" : "bg-slate-500"}`} />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedDay && (() => {
+                const day = selectedDay;
+                const slots = getTimeSlotsForDay(day, selectedRecord.branch);
+                const branchStaff = Array.from(new Set([...SHARED_EMPLOYEES, ...(branchStaffData[selectedRecord.branch] || [])]));
                 return (
                   <div key={day} className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
                     <div className="bg-slate-500 p-3 border-b flex flex-col items-center justify-center">
@@ -327,7 +342,7 @@ export default function ArchiveSchedulePage() {
                                       {showManager ? (
                                         // Show manager name for slots where manager is on duty
                                         managerName ? (
-                                          <span className={`inline-block w-full px-2 py-1.5 rounded text-xs font-bold ${getEmployeeColor(managerName)}`}>
+                                          <span className={`inline-block w-full px-2 py-1.5 rounded text-xs font-bold ${getStaffColorByIndex(managerName, branchStaff)}`}>
                                             {managerName}
                                           </span>
                                         ) : (
@@ -351,7 +366,7 @@ export default function ArchiveSchedulePage() {
                                       {COLUMNS.map(col => {
                                         const name = validData[`${day}-${slot}-${col.id}`];
                                         const displayValue = name && name !== "None" ? name : "-";
-                                        const bgColor = name && name !== "None" ? getEmployeeColor(name) : (col.type === 'exec' ? 'bg-slate-50 text-slate-300' : 'bg-white text-slate-300');
+                                        const bgColor = name && name !== "None" ? getStaffColorByIndex(name, branchStaff) : (col.type === 'exec' ? 'bg-slate-50 text-slate-300' : 'bg-white text-slate-300');
                                         return (
                                             <td key={col.id} className={`p-3 border-r border-b border-slate-200 text-center font-bold transition-colors ${bgColor}`}>
                                                 {displayValue}
@@ -371,7 +386,7 @@ export default function ArchiveSchedulePage() {
                     </div>
                   </div>
                 );
-              })}
+              })()}
 
               <SummaryTable data={calculateHoursForData()} />
             </div>
@@ -409,51 +424,54 @@ export default function ArchiveSchedulePage() {
                   </div>
 
                   {/* FILTER CONTROLS */}
-                  <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 mb-6 relative">
-                    
-                    {userRole !== "BRANCH_MANAGER" && (
-                      <div className="flex-1">
-                        <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Filter by Branch</label>
-                        <select 
-                          value={filterBranch} 
-                          onChange={(e) => setFilterBranch(e.target.value)} 
-                          className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors"
-                        >
-                          <option value="">All Branches</option>
-                          {ALL_BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                  <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-3 mb-6">
+                    <div className="flex flex-wrap gap-3">
+                      {userRole !== "BRANCH_MANAGER" && (
+                        <div className="flex-1 min-w-[180px]">
+                          <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Branch</label>
+                          <select value={filterBranch} onChange={(e) => setFilterBranch(e.target.value)}
+                            className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors">
+                            <option value="">All Branches</option>
+                            {ALL_BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-[120px]">
+                        <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Year</label>
+                        <select value={filterYear} onChange={(e) => { setFilterYear(e.target.value); setFilterQuick(""); }}
+                          className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors">
+                          <option value="">All Years</option>
+                          {Array.from(new Set(history.map(r => format(parseISO(r.startDate), "yyyy")))).sort((a,b) => parseInt(b)-parseInt(a)).map(y => (
+                            <option key={y} value={y}>{y}</option>
+                          ))}
                         </select>
                       </div>
-                    )}
-                    
-                    <div className="flex-1">
-                      <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Filter by Week</label>
-                      <div 
-                        onClick={() => setShowCalendar(true)}
-                        className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 cursor-pointer flex justify-between items-center transition-colors hover:border-blue-500"
-                      >
-                        <span>
-                          {isDateFiltered 
-                            ? `${format(range[0].startDate, "dd MMM yyyy")} - ${format(range[0].endDate, "dd MMM yyyy")}` 
-                            : "All Weeks"}
-                        </span>
-                        <span>📅</span>
+                      <div className="flex-1 min-w-[140px]">
+                        <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Month</label>
+                        <select value={filterMonth} onChange={(e) => { setFilterMonth(e.target.value); setFilterQuick(""); }}
+                          className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors">
+                          <option value="">All Months</option>
+                          {["01","02","03","04","05","06","07","08","09","10","11","12"].map((m, i) => (
+                            <option key={m} value={m}>{["January","February","March","April","May","June","July","August","September","October","November","December"][i]}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
-                    
-                    {(filterBranch || isDateFiltered) && (
-                      <div className="flex items-end">
-                        <button 
-                          onClick={() => { 
-                            setFilterBranch(""); 
-                            setFilterDate(""); 
-                            setIsDateFiltered(false);
-                          }}
-                          className="h-[50px] px-6 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl font-black uppercase tracking-widest text-xs transition-colors"
-                        >
-                          Clear
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <span className="text-[10px] font-black uppercase text-slate-400">Quick:</span>
+                      {["this-week","last-week"].map(q => (
+                        <button key={q} onClick={() => { setFilterQuick(filterQuick === q ? "" : q); setFilterYear(""); setFilterMonth(""); }}
+                          className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wide transition-colors ${filterQuick === q ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+                          {q === "this-week" ? "This Week" : "Last Week"}
                         </button>
-                      </div>
-                    )}
+                      ))}
+                      {(filterBranch || filterYear || filterMonth || filterQuick) && (
+                        <button onClick={() => { setFilterBranch(""); setFilterYear(""); setFilterMonth(""); setFilterQuick(""); }}
+                          className="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wide bg-red-50 text-red-600 hover:bg-red-100 transition-colors ml-auto">
+                          Clear All
+                        </button>
+                      )}
+                    </div>
                   </div>
               </div>
 
@@ -520,7 +538,7 @@ export default function ArchiveSchedulePage() {
                                             {cellRecs.length > 0 ? (
                                               <div className="flex flex-col gap-1">
                                                 {cellRecs.map(record => (
-                                                  <button key={record.id} onClick={() => setSelectedRecord(record)}
+                                                  <button key={record.id} onClick={() => { setSelectedRecord(record); const days = getWorkingDaysForBranch(record.branch); if (days.length > 0) setSelectedDay(days[0]); }}
                                                     className="w-full text-left px-3 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors">
                                                     <div className="font-black text-xs text-blue-800 uppercase">{record.branch}</div>
                                                     <div className="text-[10px] text-blue-500 font-bold mt-0.5">
@@ -546,46 +564,6 @@ export default function ArchiveSchedulePage() {
           </main>
       </div>
 
-      {/* --- CENTERED MODAL FOR CALENDAR --- */}
-      {showCalendar && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white p-6 rounded-[2rem] shadow-2xl border border-slate-100 flex flex-col max-w-md w-full relative">
-            <h2 className="text-xl font-black text-slate-800 mb-4 uppercase tracking-tight text-center">Select a Week</h2>
-            
-            <div className="flex justify-center w-full overflow-hidden mb-4">
-              <DateRange
-                onChange={(item: RangeKeyDict) => {
-                  const selection = item.selection;
-                  if (selection.startDate) {
-                    const start = startOfWeek(selection.startDate, { weekStartsOn: 1 });
-                    const end = endOfWeek(selection.startDate, { weekStartsOn: 1 });
-                    setRange([{ startDate: start, endDate: end, key: "selection" }]);
-                    setIsDateFiltered(true);
-                    setFilterDate(format(start, "yyyy-MM-dd")); 
-                    setTimeout(() => setShowCalendar(false), 250);
-                  }
-                }}
-                shownDate={shownDate}
-                onShownDateChange={(date) => setShownDate(date)}
-                moveRangeOnFirstSelection={true}
-                ranges={range}
-                rangeColors={["#3b82f6"]}
-                months={1}
-                direction="horizontal"
-                dateDisplayFormat="dd MMM yyyy"
-                className="border-none"
-              />
-            </div>
-
-            <button 
-              onClick={() => setShowCalendar(false)} 
-              className="w-full py-4 bg-slate-200 text-slate-700 font-black rounded-xl hover:bg-slate-300 uppercase tracking-widest text-sm transition-colors"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
     </>
   );
 }

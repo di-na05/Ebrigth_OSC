@@ -15,6 +15,9 @@ export const BRANCH_WORKING_DAYS: Record<string, string[]> = {
   "Ampang": ["Thursday", "Friday", "Saturday", "Sunday"],
   "Bandar Seri Putra": ["Thursday", "Friday", "Saturday", "Sunday"],
   "Klang": ["Thursday", "Friday", "Saturday", "Sunday"],
+  "Rimbayu": ["Saturday", "Sunday"],
+  "Kota Warisan": ["Saturday", "Sunday"],
+  "Setia Alam": ["Thursday", "Friday", "Saturday", "Sunday"],
 };
 
 export function getWorkingDaysForBranch(branchName: string): string[] {
@@ -53,6 +56,26 @@ export function getEmployeeColor(name: string): string {
   if (!name || name === "None" || name === "-- Select --") return "bg-white text-slate-400 border border-slate-200";
   const colorIndex = hashName(name) % COLOR_PALETTE.length;
   return COLOR_PALETTE[colorIndex];
+}
+
+export const STAFF_COLORS = [
+  "bg-red-500 text-white", "bg-orange-500 text-white", "bg-amber-500 text-black",
+  "bg-lime-600 text-white", "bg-green-600 text-white", "bg-emerald-500 text-white",
+  "bg-teal-600 text-white", "bg-cyan-600 text-white", "bg-sky-500 text-white",
+  "bg-blue-600 text-white", "bg-indigo-600 text-white", "bg-violet-600 text-white",
+  "bg-purple-600 text-white", "bg-fuchsia-600 text-white", "bg-pink-600 text-white",
+  "bg-rose-600 text-white", "bg-red-700 text-white", "bg-orange-700 text-white",
+  "bg-yellow-600 text-white", "bg-green-700 text-white", "bg-teal-700 text-white",
+  "bg-blue-700 text-white", "bg-indigo-700 text-white", "bg-violet-700 text-white",
+  "bg-pink-700 text-white", "bg-rose-700 text-white", "bg-cyan-700 text-white",
+  "bg-sky-700 text-white", "bg-emerald-700 text-white", "bg-purple-700 text-white",
+];
+
+export function getStaffColorByIndex(name: string, staffList: string[]): string {
+  if (!name || name === "None") return "bg-white border border-slate-200 text-slate-400";
+  const idx = staffList.indexOf(name);
+  if (idx >= 0) return STAFF_COLORS[idx % STAFF_COLORS.length];
+  return getEmployeeColor(name);
 }
 
 // --- TABLE CONFIGURATION ---
@@ -105,23 +128,23 @@ export function isAdminSlot(slot: string, branchName: string) {
 
 const MANAGER_ON_DUTY_SLOTS: Record<string, { weekday: string[], weekend: string[] }> = {
   "Ampang": {
-    weekday: ["06.00PM - 07.15PM", "07:15PM - 08:30PM"],
+    weekday: ["06.00PM - 07.15PM", "07:15PM - 08:30PM", "08.30PM - 09:45PM"],
     weekend: ["09:15 AM – 10:30 AM", "10:30 AM – 11:45 AM", "12:00 PM – 1:15 PM", "1:15 PM – 2:30 PM", "2:45 PM – 4:00 PM", "4:00 PM – 5:15 PM", "5:30 PM – 6:45 PM"],
   },
   "Bandar Seri Putra": {
-    weekday: ["06.00PM - 07.15PM", "07:15PM - 08:30PM"],
+    weekday: ["06.00PM - 07.15PM", "07:15PM - 08:30PM", "08.30PM - 09:45PM"],
     weekend: ["09:15 AM – 10:30 AM", "10:30 AM – 11:45 AM", "12:00 PM – 1:15 PM", "1:15 PM – 2:30 PM", "2:45 PM – 4:00 PM", "4:00 PM – 5:15 PM", "5:30 PM – 6:45 PM"],
   },
   "Klang": {
-    weekday: ["06.00PM - 07.15PM", "07:15PM - 08:30PM"],
+    weekday: ["06.00PM - 07.15PM", "07:15PM - 08:30PM", "08.30PM - 09:45PM"],
     weekend: ["09:15 AM – 10:30 AM", "10:30 AM – 11:45 AM", "12:00 PM – 1:15 PM", "1:15 PM – 2:30 PM", "2:45 PM – 4:00 PM", "4:00 PM – 5:15 PM", "5:30 PM – 6:45 PM"],
   },
   "Subang Taipan": {
-    weekday: ["06.00PM - 07.15PM", "07:15PM - 08:30PM"],
+    weekday: ["06.00PM - 07.15PM", "07:15PM - 08:30PM", "08.30PM - 09:45PM"],
     weekend: ["09:15 AM – 10:30 AM", "10:30 AM – 11:45 AM", "12:00 PM – 1:15 PM", "1:15 PM – 2:30 PM", "2:45 PM – 4:00 PM", "4:00 PM – 5:15 PM", "5:30 PM – 6:45 PM"],
   },
   "default": {
-    weekday: ["06.00PM - 07.15PM", "07:15PM - 08:30PM"],
+    weekday: ["06.00PM - 07.15PM", "07:15PM - 08:30PM", "08.30PM - 09:45PM"],
     weekend: ["09:15 AM – 10:30 AM", "10:30 AM – 11:45 AM", "12:00 PM – 1:15 PM", "1:15 PM – 2:30 PM", "2:45 PM – 4:00 PM", "4:00 PM – 5:15 PM", "5:30 PM – 6:45 PM"],
   },
 };

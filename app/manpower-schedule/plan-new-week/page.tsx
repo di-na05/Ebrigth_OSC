@@ -11,9 +11,9 @@ import Sidebar from "@/app/components/Sidebar";
 import {
   SHARED_EMPLOYEES, ALL_BRANCHES, DAYS, WEEKDAY_DAYS,
   COLUMNS, BRANCH_SLOTS_CONFIG,
-  getTimeSlotsForDay, isAdminSlot, getEmployeeColor,
+  getTimeSlotsForDay, isAdminSlot, getStaffColorByIndex,
   getWorkingDaysForBranch, isOpeningClosingSlot,
-  isManagerOnDutySlot, // <-- NEW IMPORT
+  isManagerOnDutySlot,
   SELECT_ARROW_WHITE, SELECT_ARROW_DARK
 } from "@/lib/manpowerUtils";
 
@@ -97,12 +97,14 @@ function PlanNewWeekPage() {
   const [branchManagerData, setBranchManagerData] = useState<Record<string, string[]>>({});
   const [columnReplacementBranch, setColumnReplacementBranch] = useState<Record<string, string>>({});
   const [managerReplacementBranch, setManagerReplacementBranch] = useState<Record<string, string>>({});
+  const [selectedDay, setSelectedDay] = useState<string>("");
   // branch → set of employee names already assigned in their saved schedule for this week
   const [scheduledElsewhere, setScheduledElsewhere] = useState<Record<string, Record<string, Set<string>>>>({});
 
   // --- ADD EMPLOYEE MODAL ---
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
   const [newEmployeeName, setNewEmployeeName] = useState("");
+  const [newEmployeePosition, setNewEmployeePosition] = useState("Part Time");
   const [addEmployeeError, setAddEmployeeError] = useState("");
   const [isAddingEmployee, setIsAddingEmployee] = useState(false);
 
@@ -161,9 +163,11 @@ function PlanNewWeekPage() {
   const fetchStaff = async () => {
     const res = await fetch('/api/branch-staff');
     const staffList = await res.json();
+    if (!Array.isArray(staffList)) return;
     const grouped: Record<string, string[]> = {};
     const managers: Record<string, string[]> = {};
     staffList.forEach((s: any) => {
+      if (!s.branch) return;
       if (!grouped[s.branch]) grouped[s.branch] = [];
       grouped[s.branch].push(s.name);
       if (s.role && s.role.startsWith('branch_manager')) {
@@ -176,6 +180,14 @@ function PlanNewWeekPage() {
   };
 
   useEffect(() => { fetchStaff(); }, []);
+
+  // Set initial selected day when branch is confirmed
+  useEffect(() => {
+    if (hasConfirmedBranch && selectedBranch) {
+      const days = getWorkingDaysForBranch(selectedBranch);
+      if (days.length > 0) setSelectedDay(d => d && days.includes(d) ? d : days[0]);
+    }
+  }, [hasConfirmedBranch, selectedBranch]);
 
   // Fetch saved schedules for this week to detect cross-branch conflicts
   useEffect(() => {
@@ -256,13 +268,31 @@ function PlanNewWeekPage() {
 
   const handleNameSelect = (day: string, targetTime: string, columnId: string, name: string) => {
     if (isLocked) return;
-    
+
     setSelections((prev) => {
       const next = { ...prev };
       if (!name) {
+        // Clear only this specific slot
         delete next[`${day}-${targetTime}-${columnId}`];
       } else {
-        next[`${day}-${targetTime}-${columnId}`] = name;
+        // Auto-fill ALL non-opening/closing slots in this column
+        const daySlots = getTimeSlotsForDay(day, selectedBranch);
+        daySlots.forEach((slot) => {
+          if (!isOpeningClosingSlot(slot, selectedBranch)) {
+            if (columnId === "MANAGER") {
+              // Skip slot if name is already in any coach/exec column for this slot
+              const usedAsStaff = COLUMNS.some(c => next[`${day}-${slot}-${c.id}`] === name);
+              if (usedAsStaff) return;
+            } else {
+              // Skip slot if name is already the manager for this slot
+              if (next[`${day}-${slot}-MANAGER`] === name) return;
+              // Skip slot if name is already in any other coach/exec column for this slot
+              const usedInOtherColumn = COLUMNS.filter(c => c.id !== columnId).some(c => next[`${day}-${slot}-${c.id}`] === name);
+              if (usedInOtherColumn) return;
+            }
+            next[`${day}-${slot}-${columnId}`] = name;
+          }
+        });
       }
       return next;
     });
@@ -359,12 +389,13 @@ function PlanNewWeekPage() {
       const res = await fetch('/api/branch-staff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newEmployeeName.trim(), branch: selectedBranch }),
+        body: JSON.stringify({ name: newEmployeeName.trim(), branch: selectedBranch, position: newEmployeePosition }),
       });
       const data = await res.json();
       if (!res.ok) { setAddEmployeeError(data.error || "Failed to add employee."); return; }
       await fetchStaff();
       setNewEmployeeName("");
+      setNewEmployeePosition("Part Time");
       setShowAddEmployeeModal(false);
     } catch {
       setAddEmployeeError("Something went wrong. Please try again.");
@@ -375,6 +406,10 @@ function PlanNewWeekPage() {
 
   const branchSpecificStaff = branchStaffData[selectedBranch] || [];
   const activeStaffList = Array.from(new Set([...SHARED_EMPLOYEES, ...branchSpecificStaff]));
+
+  const dayHasData = (day: string) => Object.keys(selections).some(k => k.startsWith(`${day}-`));
+
+  const getStaffColor = (name: string) => getStaffColorByIndex(name, activeStaffList);
 
   // Safely check role for UI tweaks
   const userRole = (session?.user as any)?.role || "USER";
@@ -419,7 +454,7 @@ function PlanNewWeekPage() {
             <div className="flex items-center gap-3">
               {hasConfirmedBranch && hasConfirmedWeek && !isLocked && (
                 <button
-                  onClick={() => { setShowAddEmployeeModal(true); setNewEmployeeName(""); setAddEmployeeError(""); }}
+                  onClick={() => { setShowAddEmployeeModal(true); setNewEmployeeName(""); setNewEmployeePosition("Part Time"); setAddEmployeeError(""); }}
                   className="bg-green-600 text-white px-5 py-3 rounded-xl font-black uppercase text-sm tracking-wide hover:bg-green-700 transition-colors shadow-sm flex items-center gap-2"
                 >
                   + Add Employee
@@ -467,7 +502,7 @@ function PlanNewWeekPage() {
           ) : (
 
             // STEP 3: THE ACTUAL TABLES
-            <div className="space-y-10">
+            <div className="space-y-6">
               {isLocked && (
                  <div className="bg-slate-800 text-white p-4 rounded-xl flex justify-between items-center shadow-xl">
                    <span className="font-bold uppercase tracking-widest text-sm">🔒 Archived Record (Read-Only)</span>
@@ -475,7 +510,35 @@ function PlanNewWeekPage() {
                  </div>
               )}
 
-              {getWorkingDaysForBranch(selectedBranch).map((day) => {
+              {/* DAY TAB BUTTONS */}
+              <div className="flex gap-2 flex-wrap">
+                {getWorkingDaysForBranch(selectedBranch).map((day) => {
+                  const isActive = selectedDay === day;
+                  const hasData = dayHasData(day);
+                  return (
+                    <button
+                      key={day}
+                      onClick={() => setSelectedDay(day)}
+                      className={`relative px-6 py-3 rounded-xl font-black uppercase text-sm tracking-wide transition-all shadow-sm ${
+                        isActive
+                          ? "bg-[#2D3F50] text-white shadow-lg scale-105"
+                          : hasData
+                          ? "bg-blue-50 text-blue-700 border-2 border-blue-300 hover:bg-blue-100"
+                          : "bg-white text-slate-500 border-2 border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      {day.slice(0, 3)}
+                      {hasData && (
+                        <span className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${isActive ? "bg-green-400" : "bg-blue-500"}`} />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* SINGLE DAY TABLE */}
+              {selectedDay && (() => {
+                const day = selectedDay;
                 const isEditing = !!editingDays[day] && !isLocked;
                 const daySlots = getTimeSlotsForDay(day, selectedBranch);
                 return (
@@ -579,7 +642,7 @@ function PlanNewWeekPage() {
                                       onChange={(e) => handleNameSelect(day, slot, "MANAGER", e.target.value)}
                                       className={`w-full p-2 rounded text-center font-bold text-xs appearance-none transition-all ${
                                         managerVal
-                                          ? getEmployeeColor(managerVal)
+                                          ? getStaffColor(managerVal)
                                           : 'border border-emerald-200 bg-white text-slate-700'
                                       }`}
                                       style={{
@@ -596,9 +659,11 @@ function PlanNewWeekPage() {
                                           ? Object.entries(scheduledElsewhere).find(([, dayMap]) => dayMap[day]?.has(e))?.[0]
                                           : undefined;
                                         const isConflict = !!conflictBranch;
+                                        const isAssignedAsStaff = COLUMNS.some(c => selections[`${day}-${slot}-${c.id}`] === e);
+                                        const isDisabled = isConflict || isAssignedAsStaff;
                                         return (
-                                          <option key={e} value={e} disabled={isConflict}>
-                                            {isConflict ? `${e} (at ${conflictBranch})` : e}
+                                          <option key={e} value={e} disabled={isDisabled}>
+                                            {isConflict ? `${e} (at ${conflictBranch})` : isAssignedAsStaff ? `${e} (assigned as staff)` : e}
                                           </option>
                                         );
                                       })}
@@ -626,29 +691,18 @@ function PlanNewWeekPage() {
                                     const colStaffList = replacementBranch
                                       ? (branchStaffData[replacementBranch] || [])
                                       : activeStaffList;
-                                    // Block names used in same slot across any column type (cross-type per-slot conflict)
-                                    const namesInSameSlot = new Set(
-                                      COLUMNS.filter(c => c.id !== col.id)
-                                        .map(c => selections[`${day}-${slot}-${c.id}`])
-                                        .filter(Boolean)
-                                    );
-                                    // Block names used in same column type across any slot (same-role dedup)
-                                    const namesInSameType = new Set(
-                                      COLUMNS.filter(c => c.id !== col.id && c.type === col.type)
-                                        .flatMap(c => daySlots.map(s => selections[`${day}-${s}-${c.id}`]))
-                                        .filter(Boolean)
-                                    );
+                                    // Only block names already selected in another column for THIS SAME SLOT
                                     const namesUsedInOtherColumns = new Set([
-                                      ...namesInSameSlot,
-                                      ...namesInSameType,
-                                      // Also block whoever is selected as manager for this slot
+                                      ...COLUMNS.filter(c => c.id !== col.id)
+                                        .map(c => selections[`${day}-${slot}-${c.id}`])
+                                        .filter(Boolean),
                                       ...(managerVal ? [managerVal] : []),
                                     ]);
 
                                     return (
                                       <td key={col.id} className={`p-1.5 border-l ${col.type === 'exec' ? 'bg-slate-50' : ''}`}>
                                         <select disabled={!isEditing} value={val} onChange={(e) => handleNameSelect(day, slot, col.id, e.target.value)}
-                                          className={`w-full p-2 rounded appearance-none text-center font-bold transition-all text-xs ${val ? getEmployeeColor(val) : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+                                          className={`w-full p-2 rounded appearance-none text-center font-bold transition-all text-xs ${val ? getStaffColor(val) : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-50'}`}
                                           style={{ backgroundImage: `url("${val ? SELECT_ARROW_WHITE : SELECT_ARROW_DARK}")`, backgroundPosition: "right 0.3rem center", backgroundSize: "8px", backgroundRepeat: "no-repeat" }}>
                                           <option value="">None</option>
                                           {colStaffList.map(e => {
@@ -682,7 +736,7 @@ function PlanNewWeekPage() {
                     </div>
                   </div>
                 );
-              })}
+              })()}
 
               <SummaryTable title="Weekly Hours Summary" data={calculateStaffHours()} />
 
@@ -719,6 +773,23 @@ function PlanNewWeekPage() {
               />
               {addEmployeeError && (
                 <p className="text-xs text-red-500 font-bold">{addEmployeeError}</p>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] font-black uppercase text-slate-500">Role</label>
+              <select
+                value={newEmployeePosition}
+                onChange={(e) => setNewEmployeePosition(e.target.value)}
+                className="w-full p-3 border-2 border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 outline-none focus:border-green-500 transition-colors"
+              >
+                <option value="Part Time">Part Time</option>
+                <option value="Full Time">Full Time</option>
+                <option value="Branch Manager">Branch Manager</option>
+              </select>
+              {newEmployeePosition === "Branch Manager" && (
+                <p className="text-[10px] text-emerald-600 font-bold bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                  This person will be set as Manager on Duty for {selectedBranch}.
+                </p>
               )}
             </div>
             <div className="flex gap-3">

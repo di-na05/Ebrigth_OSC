@@ -21,12 +21,12 @@ export async function GET() {
 // ADD A NEW EMPLOYEE TO A BRANCH
 export async function POST(request: Request) {
   try {
-    const { name, branch } = await request.json();
+    const { name, branch, position } = await request.json();
     if (!name?.trim() || !branch) {
       return NextResponse.json({ error: "Name and branch are required" }, { status: 400 });
     }
     const employee = await prisma.employee.create({
-      data: { name: name.trim(), branch }
+      data: { name: name.trim(), branch, position: position?.trim() || null }
     });
     return NextResponse.json({ success: true, employee });
   } catch (error: any) {

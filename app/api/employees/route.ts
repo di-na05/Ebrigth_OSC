@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { prisma as _prisma } from '@/lib/prisma';
+const prisma = _prisma as any;
 
 // Position level code (pos2)
 function getPositionCode(role: string): string {
@@ -89,7 +90,7 @@ export async function GET(request: Request) {
 
   if (search) {
     results = results.filter(
-      (e) =>
+      (e: any) =>
         e.fullName.toLowerCase().includes(search) ||
         e.email.toLowerCase().includes(search) ||
         e.employeeId.toLowerCase().includes(search)

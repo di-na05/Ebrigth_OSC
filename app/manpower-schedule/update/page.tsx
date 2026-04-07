@@ -2,20 +2,16 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { format, parseISO, addDays, startOfWeek, endOfWeek } from "date-fns"; 
-import { DateRange, RangeKeyDict } from "react-date-range"; 
+import { format, parseISO, addDays, startOfWeek } from "date-fns";
 import { useSession } from "next-auth/react";
-import "react-date-range/dist/styles.css"; 
-import "react-date-range/dist/theme/default.css"; 
 import Sidebar from "@/app/components/Sidebar";
 
 // --- IMPORT SHARED CONSTANTS ---
 import {
-  SHARED_EMPLOYEES, ALL_BRANCHES,
-  COLUMNS,
-  getTimeSlotsForDay, isAdminSlot, getEmployeeColor,
+  SHARED_EMPLOYEES, ALL_BRANCHES, COLUMNS,
+  getTimeSlotsForDay, isAdminSlot, getStaffColorByIndex,
   getWorkingDaysForBranch, isOpeningClosingSlot,
-  isManagerOnDutySlot, // <-- NEW IMPORT
+  isManagerOnDutySlot,
 } from "@/lib/manpowerUtils";
 
 // --- DATE FORMATTING HELPERS ---
@@ -42,6 +38,13 @@ const getDateForDay = (dayName: string, startDateStr: string) => {
     return "";
   }
   return "";
+};
+
+// Helper to clean up long names for display
+const getShortName = (fullName: string) => {
+  if (!fullName) return "";
+  // Split by space and take the first word (e.g., "NAQIB AL HUSSAINI" -> "NAQIB")
+  return fullName.split(' ')[0];
 };
 
 // --- HELPER COMPONENT: DETAILED SUMMARY TABLE ---
@@ -76,7 +79,7 @@ const SummaryTable = ({ title, data, theme = "blue" }: { title: string, data: an
               return (
                 <tr key={row.name} className="hover:bg-slate-50 transition-colors">
                   <td className="p-1.5 border-r text-center text-slate-400 font-bold">{index + 1}</td>
-                  <td className="p-1.5 border-r font-black text-slate-700 truncate">{row.name}</td>
+                  <td className="p-1.5 border-r font-black text-slate-700 truncate">{getShortName(row.name)}</td>
                   <td className="p-1.5 border-r text-center">
                     <span className="bg-slate-50 border rounded px-1 py-0.5 text-slate-600 font-bold">{c.h}h {c.m}m</span>
                   </td>
@@ -112,20 +115,39 @@ export default function UpdateSchedulePage() {
   const [managerReplacementBranch, setManagerReplacementBranch] = useState<Record<string, string>>({});
   const [scheduledElsewhere, setScheduledElsewhere] = useState<Record<string, Record<string, Set<string>>>>({});
 
+  const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
+  const [newEmployeeName, setNewEmployeeName] = useState("");
+  const [newEmployeePosition, setNewEmployeePosition] = useState("Part Time");
+  const [addEmployeeError, setAddEmployeeError] = useState("");
+  const [isAddingEmployee, setIsAddingEmployee] = useState(false);
+
+  const [selectedDay, setSelectedDay] = useState<string>("");
   const [history, setHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   const [filterBranch, setFilterBranch] = useState<string>("");
-  const [filterDate, setFilterDate] = useState<string>(""); 
-  
-  const [showCalendar, setShowCalendar] = useState(false);
-  const [shownDate, setShownDate] = useState(new Date());
-  const [isDateFiltered, setIsDateFiltered] = useState(false);
-  const [range, setRange] = useState([{
-    startDate: new Date(),
-    endDate: new Date(),
-    key: "selection",
-  }]);
+  const [filterYear, setFilterYear] = useState<string>("");
+  const [filterMonth, setFilterMonth] = useState<string>("");
+  const [filterQuick, setFilterQuick] = useState<string>(""); // "this-week" | "last-week"
+
+  const fetchStaff = async () => {
+    const res = await fetch('/api/branch-staff');
+    const staffList = await res.json();
+    if (!Array.isArray(staffList)) return;
+    const grouped: Record<string, string[]> = {};
+    const managers: Record<string, string[]> = {};
+    staffList.forEach((s: any) => {
+      if (!s.branch) return;
+      if (!grouped[s.branch]) grouped[s.branch] = [];
+      grouped[s.branch].push(s.name);
+      if (s.role && s.role.startsWith('branch_manager')) {
+        if (!managers[s.branch]) managers[s.branch] = [];
+        managers[s.branch].push(s.name);
+      }
+    });
+    setBranchStaffData(grouped);
+    setBranchManagerData(managers);
+  };
 
   useEffect(() => {
     const fetchSchedules = async () => {
@@ -139,22 +161,6 @@ export default function UpdateSchedulePage() {
         setIsLoading(false);
       }
     };
-    const fetchStaff = async () => {
-      const res = await fetch('/api/branch-staff');
-      const staffList = await res.json();
-      const grouped: Record<string, string[]> = {};
-      const managers: Record<string, string[]> = {};
-      staffList.forEach((s: any) => {
-        if (!grouped[s.branch]) grouped[s.branch] = [];
-        grouped[s.branch].push(s.name);
-        if (s.role && s.role.startsWith('branch_manager')) {
-          if (!managers[s.branch]) managers[s.branch] = [];
-          managers[s.branch].push(s.name);
-        }
-      });
-      setBranchStaffData(grouped);
-      setBranchManagerData(managers);
-    };
     fetchSchedules();
     fetchStaff();
   }, []);
@@ -163,13 +169,19 @@ export default function UpdateSchedulePage() {
   const userBranch = (session?.user as any)?.branchName;
 
   const filteredHistory = useMemo(() => {
+    const today = new Date();
+    const thisMonday = format(startOfWeek(today, { weekStartsOn: 1 }), "yyyy-MM-dd");
+    const lastMonday = format(startOfWeek(addDays(today, -7), { weekStartsOn: 1 }), "yyyy-MM-dd");
     return history.filter((record: any) => {
       if (userRole === "BRANCH_MANAGER" && record.branch !== userBranch) return false;
-      const matchBranch = filterBranch ? record.branch === filterBranch : true;
-      const matchWeek = filterDate ? record.startDate === filterDate : true;
-      return matchBranch && matchWeek;
+      if (filterBranch && record.branch !== filterBranch) return false;
+      if (filterYear && format(parseISO(record.startDate), "yyyy") !== filterYear) return false;
+      if (filterMonth && format(parseISO(record.startDate), "yyyy-MM") !== `${filterYear || format(today, "yyyy")}-${filterMonth}`) return false;
+      if (filterQuick === "this-week" && record.startDate !== thisMonday) return false;
+      if (filterQuick === "last-week" && record.startDate !== lastMonday) return false;
+      return true;
     });
-  }, [history, filterBranch, filterDate, userRole, userBranch]);
+  }, [history, filterBranch, filterYear, filterMonth, filterQuick, userRole, userBranch]);
 
   // Compute which staff are already scheduled at other branches for the same week
   useEffect(() => {
@@ -189,19 +201,71 @@ export default function UpdateSchedulePage() {
     setScheduledElsewhere(map);
   }, [selectedRecord, history]);
 
+  const handleAddEmployee = async () => {
+    if (!newEmployeeName.trim()) { setAddEmployeeError("Name cannot be empty."); return; }
+    if (!selectedRecord) return;
+    setIsAddingEmployee(true);
+    setAddEmployeeError("");
+    try {
+      const res = await fetch('/api/branch-staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newEmployeeName.trim(), branch: selectedRecord.branch, position: newEmployeePosition }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setAddEmployeeError(data.error || "Failed to add employee."); return; }
+      await fetchStaff();
+      setNewEmployeeName("");
+      setNewEmployeePosition("Part Time");
+      setShowAddEmployeeModal(false);
+    } catch {
+      setAddEmployeeError("Something went wrong. Please try again.");
+    } finally {
+      setIsAddingEmployee(false);
+    }
+  };
+
+  const sanitizeSelections = (selections: Record<string, any>, branch?: string) => {
+    // Build case-insensitive lookup map from all known staff
+    const allKnownStaff = [...SHARED_EMPLOYEES, ...(branch ? (branchStaffData[branch] || []) : Object.values(branchStaffData).flat())];
+    const nameLookup = new Map(allKnownStaff.map(n => [n.toLowerCase(), n]));
+    return Object.fromEntries(
+      Object.entries(selections || {})
+        .filter(([, v]) => v && v !== "None")
+        .map(([k, v]) => [k, nameLookup.get((v as string).toLowerCase()) ?? v])
+    );
+  };
+
   const handleSelectRecord = (record: any) => {
     setSelectedRecord(record);
-    setUpdatedSelections({ ...record.selections });
+    setUpdatedSelections(sanitizeSelections(record.selections, record.branch));
     setUpdatedNotes({ ...record.notes });
+    const days = getWorkingDaysForBranch(record.branch);
+    if (days.length > 0) setSelectedDay(days[0]);
   };
 
   const handleActualNameSelect = (day: string, targetTime: string, colId: string, name: string) => {
+    if (!selectedRecord) return;
     setUpdatedSelections((prev) => {
       const next = { ...prev };
       if (!name || name === "None") {
         delete next[`${day}-${targetTime}-${colId}`];
       } else {
-        next[`${day}-${targetTime}-${colId}`] = name;
+        // Auto-fill ALL non-opening/closing slots in this column (same logic as Plan New Week)
+        const daySlots = getTimeSlotsForDay(day, selectedRecord.branch);
+        daySlots.forEach((slot) => {
+          if (!isOpeningClosingSlot(slot, selectedRecord.branch)) {
+            if (colId === "MANAGER") {
+              const usedAsStaff = COLUMNS.some(c => next[`${day}-${slot}-${c.id}`] === name);
+              if (usedAsStaff) return;
+            } else {
+              if (next[`${day}-${slot}-MANAGER`] === name) return;
+              const usedInOtherColumn = COLUMNS.filter(c => c.id !== colId).some(c => next[`${day}-${slot}-${c.id}`] === name);
+              if (usedInOtherColumn) return;
+            }
+            next[`${day}-${slot}-${colId}`] = name;
+          }
+        });
       }
       return next;
     });
@@ -234,8 +298,9 @@ export default function UpdateSchedulePage() {
 
   const calculateHoursForData = (selections: Record<string, string>, isOriginalData = false) => {
     if (!selectedRecord) return [];
-    const dataToCalculate = isOriginalData ? (selectedRecord.originalSelections || selectedRecord.selections) : selections;
-    if (!dataToCalculate) return [];
+    const rawData = isOriginalData ? (selectedRecord.originalSelections || selectedRecord.selections) : selections;
+    if (!rawData) return [];
+    const dataToCalculate = sanitizeSelections(rawData);
 
     const managerNames = new Set(Object.values(branchManagerData).flat());
     const allBranchStaff = (branchStaffData[selectedRecord.branch] || []).filter(n => !managerNames.has(n));
@@ -279,7 +344,7 @@ export default function UpdateSchedulePage() {
     
     const updatedRecord = {
       ...selectedRecord,
-      selections: updatedSelections,
+      selections: sanitizeSelections(updatedSelections),
       notes: updatedNotes,
       status: "Updated",
     };
@@ -306,9 +371,6 @@ export default function UpdateSchedulePage() {
 
   if (selectedRecord) {
     
-    const namesUsedInOriginal = Object.values(selectedRecord.originalSelections || {}).filter(Boolean) as string[];
-    const namesUsedInUpdates = Object.values(updatedSelections || {}).filter(Boolean) as string[];
-    const globalUsedNames = Array.from(new Set([...namesUsedInOriginal, ...namesUsedInUpdates]));
     const originalData = selectedRecord.originalSelections || selectedRecord.selections || {};
     const originalNotes = selectedRecord.notes || selectedRecord.originalNotes || {};
 
@@ -316,7 +378,7 @@ export default function UpdateSchedulePage() {
       <div className="flex h-screen bg-slate-50 text-slate-800 overflow-hidden">
         <Sidebar sidebarOpen={sidebarOpen} onToggle={() => setSidebarOpen(p => !p)} />
         
-        <main className="flex-1 h-screen flex flex-col overflow-hidden relative" style={{ zoom: 0.9 }}>
+        <main className="flex-1 h-screen flex flex-col overflow-hidden relative" style={{ zoom: 1.0 }}>
           
           <div className="shrink-0 w-full mx-auto px-4 md:px-6 pt-4 md:pt-6 z-50 bg-slate-50">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center gap-6 mb-6">
@@ -339,23 +401,54 @@ export default function UpdateSchedulePage() {
                   )}
                 </h1>
               </div>
-              <button onClick={handleUpdateSave} className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-xl text-sm font-black uppercase shadow-md transition-colors flex items-center gap-2">
-                <span>💾</span> Save Adjustments
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => { setShowAddEmployeeModal(true); setNewEmployeeName(""); setNewEmployeePosition("Part Time"); setAddEmployeeError(""); }}
+                  className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-sm font-black uppercase shadow-md transition-colors flex items-center gap-2"
+                >
+                  + Add Employee
+                </button>
+                <button onClick={handleUpdateSave} className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-xl text-sm font-black uppercase shadow-md transition-colors flex items-center gap-2">
+                  <span>💾</span> Save Adjustments
+                </button>
+              </div>
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto w-full mx-auto px-4 md:px-6 pb-20">
             <div className="space-y-6 mb-10">
-              {getWorkingDaysForBranch(selectedRecord.branch).map((day) => {
+
+              {/* DAY TAB BUTTONS */}
+              <div className="flex gap-2 flex-wrap">
+                {getWorkingDaysForBranch(selectedRecord.branch).map((day) => {
+                  const isActive = selectedDay === day;
+                  const hasData = Object.keys(updatedSelections).some(k => k.startsWith(`${day}-`));
+                  return (
+                    <button key={day} onClick={() => setSelectedDay(day)}
+                      className={`relative px-6 py-3 rounded-xl font-black uppercase text-sm tracking-wide transition-all shadow-sm ${
+                        isActive ? "bg-[#2D3F50] text-white shadow-lg scale-105"
+                        : hasData ? "bg-orange-50 text-orange-700 border-2 border-orange-300 hover:bg-orange-100"
+                        : "bg-white text-slate-500 border-2 border-slate-200 hover:bg-slate-50"
+                      }`}>
+                      {day.slice(0, 3)}
+                      {hasData && <span className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${isActive ? "bg-green-400" : "bg-orange-500"}`} />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedDay && (() => {
+                const day = selectedDay;
                 const slots = getTimeSlotsForDay(day, selectedRecord.branch);
-
-                const activeStaffList = Array.from(new Set([
-                    ...SHARED_EMPLOYEES,
-                    ...(branchStaffData[selectedRecord.branch] || []),
-                    ...globalUsedNames
+                const currentStaff = [...SHARED_EMPLOYEES, ...(branchStaffData[selectedRecord.branch] || [])];
+                const currentStaffLower = new Set(currentStaff.map(n => n.toLowerCase()));
+                // Include replacement staff from other branches already saved in this record
+                const namesInRecord = Array.from(new Set([
+                  ...Object.values(originalData).filter((v): v is string => !!v && v !== "None"),
+                  ...Object.values(updatedSelections).filter((v): v is string => !!v && v !== "None"),
                 ]));
-
+                const extraNames = namesInRecord.filter(n => !currentStaffLower.has(n.toLowerCase()));
+                const activeStaffList = Array.from(new Set([...currentStaff, ...extraNames]));
                 return (
                   <div key={day} className="bg-white rounded-xl shadow-lg p-3 border-t-2 border-orange-500">
                     <div className="relative flex flex-col justify-center items-center mb-3 border-b pb-2 min-h-[30px]">
@@ -364,8 +457,7 @@ export default function UpdateSchedulePage() {
                         {getDateForDay(day, selectedRecord.startDate)}
                       </span>
                     </div>
-                    
-                    <div className="flex flex-col xl:flex-row gap-3 relative">
+                    <div className="flex flex-col gap-4">
 
                       {/* ===== PLANNING SIDE (read-only) ===== */}
                       <div className="flex-1 opacity-60 flex flex-col min-w-0">
@@ -373,7 +465,7 @@ export default function UpdateSchedulePage() {
                             Planning
                         </div>
                         <div className="overflow-x-auto border rounded relative">
-                          <table className="w-full border-collapse text-[9px]" style={{ minWidth: '1700px' }}>
+                          <table className="w-full border-collapse text-[11px]" style={{ minWidth: '1700px' }}>
                             <thead>
                               <tr className="bg-slate-700 text-white text-center h-[40px]">
                                 <th className="p-1 border border-slate-600 w-32 sticky left-0 z-20 bg-slate-700">
@@ -411,8 +503,8 @@ export default function UpdateSchedulePage() {
                                       <td className="p-1 border bg-emerald-50 text-center font-bold align-middle h-[32px]">
                                         {showManagerPlanning ? (
                                           planningManagerName ? (
-                                            <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-bold ${planningManagerName ? '' : ''}`}>
-                                              {planningManagerName}
+                                            <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${planningManagerName ? '' : ''}`}>
+                                              {getShortName(planningManagerName)}
                                             </span>
                                           ) : (
                                             <span className="text-slate-300">-</span>
@@ -427,15 +519,16 @@ export default function UpdateSchedulePage() {
 
                                     {isOpenClose ? (
                                       <td colSpan={COLUMNS.length + (isOpenClose ? 2 : 1)} className="p-1 border text-center">
-                                        <span className="text-[8px] font-black text-blue-600 uppercase tracking-widest">All Staff — Executive ({slotIndex === 0 ? "Opening" : "Closing"})</span>
+                                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">All Staff — Executive ({slotIndex === 0 ? "Opening" : "Closing"})</span>
                                       </td>
                                     ) : (
                                       <>
                                         {COLUMNS.map(col => {
                                           const name = originalData[`${day}-${slot}-${col.id}`];
+                                          const validName = name && name !== "None" ? name : "";
                                           return (
-                                            <td key={col.id} className={`p-1 border text-center font-bold h-[32px] ${name ? getEmployeeColor(name) : 'bg-white'}`}>
-                                              {name || "-"}
+                                            <td key={col.id} className={`p-1 border text-center font-bold h-[32px] ${validName ? getStaffColorByIndex(validName, activeStaffList) : 'bg-white'}`}>
+                                              {getShortName(validName) || "-"}
                                             </td>
                                           );
                                         })}
@@ -453,16 +546,16 @@ export default function UpdateSchedulePage() {
                       {/* ===== ACTUAL SIDE (editable) ===== */}
                       <div className="flex-1 flex flex-col min-w-0">
                         <div className="bg-orange-600 p-1.5 flex justify-between items-center mb-1 rounded text-white tracking-widest h-8 sticky left-0 right-0 z-30">
-                            <div className="w-fit min-w-[100px] text-[8px] font-black bg-black/10 px-2 py-1 rounded">
+                            <div className="w-fit min-w-[100px] text-[10px] font-black bg-black/10 px-2 py-1 rounded">
                                 {selectedRecord.branch}
                             </div>
-                            <span className="font-bold text-[9px] uppercase">Actual</span>
+                            <span className="font-bold text-[11px] uppercase">Actual</span>
                             <div className="w-24 flex justify-end">
-                              <button onClick={() => handleClearDay(day)} className="text-[7px] font-bold bg-orange-800 px-1.5 py-0.5 rounded">CLEAR DAY</button>
+                              <button onClick={() => handleClearDay(day)} className="text-[9px] font-bold bg-orange-800 px-1.5 py-0.5 rounded">CLEAR DAY</button>
                             </div>
                         </div>
                         <div className="overflow-x-auto border rounded relative">
-                          <table className="w-full border-collapse text-[9px]" style={{ minWidth: '1700px' }}>
+                          <table className="w-full border-collapse text-[11px]" style={{ minWidth: '1700px' }}>
                             <thead>
                               <tr className="bg-[#2D3F50] text-white h-[40px]">
                                 <th className="p-1 border border-slate-900 w-32 sticky left-0 z-20 bg-[#2D3F50]">
@@ -474,14 +567,14 @@ export default function UpdateSchedulePage() {
                                     <select
                                       value={managerReplacementBranch[day] || ""}
                                       onChange={(e) => setManagerReplacementBranch(prev => ({ ...prev, [day]: e.target.value }))}
-                                      className="text-[7px] bg-slate-600 text-white border-none rounded px-1 py-0.5 w-full appearance-none text-center"
+                                      className="text-[9px] bg-slate-600 text-white border-none rounded px-1 py-0.5 w-full appearance-none text-center"
                                     >
                                       <option value="">Own Branch</option>
                                       {ALL_BRANCHES.filter(b => b !== selectedRecord.branch).map(b => (
                                         <option key={b} value={b}>{b}</option>
                                       ))}
                                     </select>
-                                    <button onClick={() => clearManagerForDay(day)} className="text-[7px] text-orange-300 font-bold hover:text-white uppercase px-2 py-0.5 rounded transition-colors bg-slate-600">CLEAR</button>
+                                    <button onClick={() => clearManagerForDay(day)} className="text-[9px] text-orange-300 font-bold hover:text-white uppercase px-2 py-0.5 rounded transition-colors bg-slate-600">CLEAR</button>
                                   </div>
                                 </th>
                                 {COLUMNS.map(c => (
@@ -491,14 +584,14 @@ export default function UpdateSchedulePage() {
                                       <select
                                         value={columnReplacementBranch[`${day}-${c.id}`] || ""}
                                         onChange={(e) => setColumnReplacementBranch(prev => ({ ...prev, [`${day}-${c.id}`]: e.target.value }))}
-                                        className="text-[7px] bg-slate-600 text-white border-none rounded px-1 py-0.5 w-full appearance-none text-center"
+                                        className="text-[9px] bg-slate-600 text-white border-none rounded px-1 py-0.5 w-full appearance-none text-center"
                                       >
                                         <option value="">Own Branch</option>
                                         {ALL_BRANCHES.filter(b => b !== selectedRecord.branch).map(b => (
                                           <option key={b} value={b}>{b}</option>
                                         ))}
                                       </select>
-                                      <button onClick={() => handleClearColumn(day, c.id)} className="text-[6px] text-orange-300 font-bold hover:text-white py-0.5">CLEAR</button>
+                                      <button onClick={() => handleClearColumn(day, c.id)} className="text-[9px] text-orange-300 font-bold hover:text-white py-0.5">CLEAR</button>
                                     </div>
                                   </th>
                                 ))}
@@ -512,10 +605,11 @@ export default function UpdateSchedulePage() {
                                 const isOpenClose = isOpeningClosingSlot(slot, selectedRecord.branch);
                                 // --- KEY FIX: per-slot manager logic for Actual side ---
                                 const showManagerActual = isManagerOnDutySlot(slot, selectedRecord.branch, day);
-                                const actualManagerVal =
-                                  updatedSelections[`${day}-${slot}-MANAGER`] ||   // new format
-                                  updatedNotes[`${day}-MANAGER`] ||                 // legacy format
+                                const rawManagerVal =
+                                  updatedSelections[`${day}-${slot}-MANAGER`] ||
+                                  updatedNotes[`${day}-MANAGER`] ||
                                   "";
+                                const actualManagerVal = rawManagerVal === "None" ? "" : rawManagerVal;
 
                                 return (
                                   <tr key={slot} className={`group h-[32px] ${isOpenClose ? 'bg-blue-50' : ''}`}>
@@ -528,19 +622,8 @@ export default function UpdateSchedulePage() {
                                           // Show editable dropdown for manager slots
                                           <select
                                             value={actualManagerVal}
-                                            onChange={(e) => {
-                                              const val = e.target.value;
-                                              setUpdatedSelections(prev => {
-                                                const next = { ...prev };
-                                                if (val) {
-                                                  next[`${day}-${slot}-MANAGER`] = val;
-                                                } else {
-                                                  delete next[`${day}-${slot}-MANAGER`];
-                                                }
-                                                return next;
-                                              });
-                                            }}
-                                            className="w-full h-full p-1 text-[9px] font-bold text-center border border-emerald-200 rounded bg-white appearance-none outline-none"
+                                            onChange={(e) => handleActualNameSelect(day, slot, "MANAGER", e.target.value)}
+                                            className="w-full h-full p-1 text-[11px] font-bold text-center border border-emerald-200 rounded bg-white appearance-none outline-none"
                                           >
                                             <option value="">-- Select --</option>
                                             {(branchManagerData[managerReplacementBranch[day] || selectedRecord.branch] || []).map(e => {
@@ -567,12 +650,13 @@ export default function UpdateSchedulePage() {
 
                                     {isOpenClose ? (
                                       <td colSpan={COLUMNS.length + 1} className="p-1 border text-center">
-                                        <span className="text-[8px] font-black text-blue-600 uppercase tracking-widest">All Staff — Executive ({slotIndex === 0 ? "Opening" : "Closing"})</span>
+                                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">All Staff — Executive ({slotIndex === 0 ? "Opening" : "Closing"})</span>
                                       </td>
                                     ) : (
                                       <>
                                         {COLUMNS.map(col => {
-                                          const val = updatedSelections[`${day}-${slot}-${col.id}`] || "";
+                                          const rawVal = updatedSelections[`${day}-${slot}-${col.id}`] || "";
+                                          const val = rawVal === "None" ? "" : rawVal;
                                           const replacementBranch = columnReplacementBranch[`${day}-${col.id}`];
                                           const colStaffList = replacementBranch
                                             ? (branchStaffData[replacementBranch] || [])
@@ -583,21 +667,14 @@ export default function UpdateSchedulePage() {
                                               .map(c => updatedSelections[`${day}-${slot}-${c.id}`])
                                               .filter(Boolean)
                                           );
-                                          // Block names used in same column type across any slot (same-role dedup)
-                                          const namesInSameType = new Set(
-                                            COLUMNS.filter(c => c.id !== col.id && c.type === col.type)
-                                              .flatMap(c => slots.map(s => updatedSelections[`${day}-${s}-${c.id}`]))
-                                              .filter(Boolean)
-                                          );
                                           const namesUsedInOtherColumns = new Set([
                                             ...namesInSameSlot,
-                                            ...namesInSameType,
                                             ...(actualManagerVal ? [actualManagerVal] : []),
                                           ]);
                                           return (
                                             <td key={col.id} className={`p-0 border h-[32px] ${col.type==='exec' ? 'bg-slate-50' : 'bg-white'}`}>
                                               <select value={val} onChange={(e) => handleActualNameSelect(day, slot, col.id, e.target.value)}
-                                                className={`w-full h-full p-1 outline-none font-bold text-center appearance-none block ${val ? getEmployeeColor(val) : 'bg-transparent text-slate-300'}`}>
+                                                className={`w-full h-full p-1 outline-none font-bold text-center appearance-none block ${val && val !== "None" ? getStaffColorByIndex(val, activeStaffList) : 'bg-transparent text-slate-300'}`}>
                                                 <option value="">None</option>
                                                 {colStaffList.map(e => {
                                                   const conflictBranch = replacementBranch
@@ -615,7 +692,7 @@ export default function UpdateSchedulePage() {
                                           );
                                         })}
                                         <td className="p-0 border bg-white h-[32px]">
-                                          <textarea value={updatedNotes[`${day}-${slot}-notes`] || ""} onChange={(e) => setUpdatedNotes(p => ({...p, [`${day}-${slot}-notes`]: e.target.value}))} className="w-full h-full p-1 text-[8px] resize-none outline-none italic text-slate-600 block" />
+                                          <textarea value={updatedNotes[`${day}-${slot}-notes`] || ""} onChange={(e) => setUpdatedNotes(p => ({...p, [`${day}-${slot}-notes`]: e.target.value}))} className="w-full h-full p-1 text-[10px] resize-none outline-none italic text-slate-600 block" />
                                         </td>
                                       </>
                                     )}
@@ -629,7 +706,7 @@ export default function UpdateSchedulePage() {
                     </div>
                   </div>
                 );
-              })}
+              })()}
 
               <div className="mt-6 bg-white p-4 rounded-xl border border-slate-200 shadow-md">
                 <h2 className="text-sm font-black text-center uppercase tracking-widest text-slate-800 mb-4">📊 Staff Hours Comparison</h2>
@@ -641,6 +718,65 @@ export default function UpdateSchedulePage() {
             </div>
           </div>
         </main>
+
+        {/* ADD EMPLOYEE MODAL */}
+        {showAddEmployeeModal && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+            <div className="bg-white p-8 rounded-[2rem] shadow-2xl border border-slate-100 w-full max-w-sm flex flex-col gap-5">
+              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight text-center">Add Employee</h2>
+              <div className="text-xs text-slate-500 text-center font-bold uppercase tracking-widest bg-slate-50 border border-slate-200 rounded-xl px-4 py-2">
+                Branch: {selectedRecord.branch}
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-black uppercase text-slate-500">Full Name</label>
+                <input
+                  type="text"
+                  value={newEmployeeName}
+                  onChange={(e) => { setNewEmployeeName(e.target.value); setAddEmployeeError(""); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleAddEmployee(); }}
+                  placeholder="e.g. Ahmad Bin Ali"
+                  className="w-full p-3 border-2 border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 outline-none focus:border-green-500 transition-colors"
+                  autoFocus
+                />
+                {addEmployeeError && (
+                  <p className="text-xs text-red-500 font-bold">{addEmployeeError}</p>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-black uppercase text-slate-500">Role</label>
+                <select
+                  value={newEmployeePosition}
+                  onChange={(e) => setNewEmployeePosition(e.target.value)}
+                  className="w-full p-3 border-2 border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 outline-none focus:border-green-500 transition-colors"
+                >
+                  <option value="Part Time">Part Time</option>
+                  <option value="Full Time">Full Time</option>
+                  <option value="Branch Manager">Branch Manager</option>
+                </select>
+                {newEmployeePosition === "Branch Manager" && (
+                  <p className="text-[10px] text-emerald-600 font-bold bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                    This person will be set as Manager on Duty for {selectedRecord.branch}.
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowAddEmployeeModal(false)}
+                  className="flex-1 py-3 bg-slate-200 text-slate-700 font-black rounded-xl hover:bg-slate-300 uppercase tracking-widest text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddEmployee}
+                  disabled={isAddingEmployee}
+                  className="flex-1 py-3 bg-green-600 text-white font-black rounded-xl hover:bg-green-700 disabled:bg-slate-300 uppercase tracking-widest text-sm transition-colors"
+                >
+                  {isAddingEmployee ? "Saving..." : "Add"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -651,7 +787,7 @@ export default function UpdateSchedulePage() {
       <div className="flex h-screen bg-slate-50 overflow-hidden">
         <Sidebar sidebarOpen={sidebarOpen} onToggle={() => setSidebarOpen(p => !p)} />
         
-        <main className="flex-1 h-screen flex flex-col overflow-hidden relative" style={{ zoom: 0.9 }}>
+        <main className="flex-1 h-screen flex flex-col overflow-hidden relative" style={{ zoom: 1.0 }}>
             
             <div className="shrink-0 w-full mx-auto px-4 md:px-6 pt-4 md:pt-6 z-50 bg-slate-50">
               
@@ -670,51 +806,54 @@ export default function UpdateSchedulePage() {
                 </h1>
               </div>
 
-              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 mb-6 relative">
-                
-                {userRole !== "BRANCH_MANAGER" && (
-                  <div className="flex-1">
-                    <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Filter by Branch</label>
-                    <select 
-                      value={filterBranch} 
-                      onChange={(e) => setFilterBranch(e.target.value)} 
-                      className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors"
-                    >
-                      <option value="">All Branches</option>
-                      {ALL_BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-3 mb-6">
+                <div className="flex flex-wrap gap-3">
+                  {userRole !== "BRANCH_MANAGER" && (
+                    <div className="flex-1 min-w-[180px]">
+                      <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Branch</label>
+                      <select value={filterBranch} onChange={(e) => setFilterBranch(e.target.value)}
+                        className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors">
+                        <option value="">All Branches</option>
+                        {ALL_BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-[120px]">
+                    <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Year</label>
+                    <select value={filterYear} onChange={(e) => { setFilterYear(e.target.value); setFilterQuick(""); }}
+                      className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors">
+                      <option value="">All Years</option>
+                      {Array.from(new Set(history.map(r => format(parseISO(r.startDate), "yyyy")))).sort((a,b) => parseInt(b)-parseInt(a)).map(y => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
                     </select>
                   </div>
-                )}
-                
-                <div className="flex-1">
-                  <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Filter by Week</label>
-                  <div 
-                    onClick={() => setShowCalendar(true)}
-                    className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 cursor-pointer flex justify-between items-center transition-colors hover:border-blue-500"
-                  >
-                    <span>
-                      {isDateFiltered 
-                        ? `${format(range[0].startDate, "dd MMM yyyy")} - ${format(range[0].endDate, "dd MMM yyyy")}` 
-                        : "All Weeks"}
-                    </span>
-                    <span>📅</span>
+                  <div className="flex-1 min-w-[140px]">
+                    <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Month</label>
+                    <select value={filterMonth} onChange={(e) => { setFilterMonth(e.target.value); setFilterQuick(""); }}
+                      className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors">
+                      <option value="">All Months</option>
+                      {["01","02","03","04","05","06","07","08","09","10","11","12"].map((m, i) => (
+                        <option key={m} value={m}>{["January","February","March","April","May","June","July","August","September","October","November","December"][i]}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-                
-                {(filterBranch || isDateFiltered) && (
-                  <div className="flex items-end">
-                    <button 
-                      onClick={() => { 
-                        setFilterBranch(""); 
-                        setFilterDate(""); 
-                        setIsDateFiltered(false);
-                      }}
-                      className="h-[50px] px-6 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl font-black uppercase tracking-widest text-xs transition-colors"
-                    >
-                      Clear
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="text-[10px] font-black uppercase text-slate-400">Quick:</span>
+                  {["this-week","last-week"].map(q => (
+                    <button key={q} onClick={() => { setFilterQuick(filterQuick === q ? "" : q); setFilterYear(""); setFilterMonth(""); }}
+                      className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wide transition-colors ${filterQuick === q ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+                      {q === "this-week" ? "This Week" : "Last Week"}
                     </button>
-                  </div>
-                )}
+                  ))}
+                  {(filterBranch || filterYear || filterMonth || filterQuick) && (
+                    <button onClick={() => { setFilterBranch(""); setFilterYear(""); setFilterMonth(""); setFilterQuick(""); }}
+                      className="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wide bg-red-50 text-red-600 hover:bg-red-100 transition-colors ml-auto">
+                      Clear All
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -805,45 +944,6 @@ export default function UpdateSchedulePage() {
             </div>
         </main>
       </div>
-      {showCalendar && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white p-6 rounded-[2rem] shadow-2xl border border-slate-100 flex flex-col max-w-md w-full relative">
-            <h2 className="text-xl font-black text-slate-800 mb-4 uppercase tracking-tight text-center">Select a Week</h2>
-
-            <div className="flex justify-center w-full overflow-hidden mb-4">
-              <DateRange
-                onChange={(item: RangeKeyDict) => {
-                  const selection = item.selection;
-                  if (selection.startDate) {
-                    const start = startOfWeek(selection.startDate, { weekStartsOn: 1 });
-                    const end = endOfWeek(selection.startDate, { weekStartsOn: 1 });
-                    setRange([{ startDate: start, endDate: end, key: "selection" }]);
-                    setIsDateFiltered(true);
-                    setFilterDate(format(start, "yyyy-MM-dd"));
-                    setTimeout(() => setShowCalendar(false), 250);
-                  }
-                }}
-                shownDate={shownDate}
-                onShownDateChange={(date) => setShownDate(date)}
-                moveRangeOnFirstSelection={true}
-                ranges={range}
-                rangeColors={["#3b82f6"]}
-                months={1}
-                direction="horizontal"
-                dateDisplayFormat="dd MMM yyyy"
-                className="border-none"
-              />
-            </div>
-
-            <button
-              onClick={() => setShowCalendar(false)}
-              className="w-full py-4 bg-slate-200 text-slate-700 font-black rounded-xl hover:bg-slate-300 uppercase tracking-widest text-sm transition-colors"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
     </>
   );
 }
