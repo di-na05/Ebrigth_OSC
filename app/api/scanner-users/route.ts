@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
     try {
-        const url = 'http://192.168.100.64/ISAPI/AccessControl/UserInfo/Search?format=json';
+        const url = 'http://202.185.96.80:9090/ISAPI/AccessControl/UserInfo/Search?format=json';
         const allUsers: { employeeNo: string; name: string }[] = [];
         const seen = new Set<string>(); // deduplicate by employeeNo
         let position = 0;

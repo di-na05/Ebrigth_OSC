@@ -70,7 +70,7 @@ function todayStr(): string {
 
 export async function GET() {
   try {
-    const url = 'http://192.168.100.147/ISAPI/AccessControl/AcsEvent?format=json';
+    const url = 'http://202.185.96.80:9090/ISAPI/AccessControl/AcsEvent?format=json';
 
     const now = new Date();
     const startOfToday = new Date(now);

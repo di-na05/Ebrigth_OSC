@@ -175,6 +175,17 @@ function getTodayStr(): string {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+interface BranchStaffMember {
+  id: number;
+  name: string | null;
+  nickname: string | null;
+  employeeId: string | null;
+  department: string | null;
+  role: string | null;
+  email: string | null;
+  location: string | null;
+}
+
 export default function AttendanceSummary() {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -183,10 +194,13 @@ export default function AttendanceSummary() {
   const [logs, setLogs] = useState<AttendanceRecord[]>([]);
   const [scannerStatus, setScannerStatus] = useState<"idle" | "ok" | "error">("idle");
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  // Raw event count from scanner — used for debug banner
   const [rawCount, setRawCount] = useState<number | null>(null);
-  // Scanner IDs seen this session — shown in debug table
   const [seenScannerIds, setSeenScannerIds] = useState<string[]>([]);
+
+  // ── Branch / Location filter ───────────────────────────────────────────────
+  const [locations, setLocations] = useState<string[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<string>("HQ");
+  const [branchStaff, setBranchStaff] = useState<BranchStaffMember[]>([]);
 
   // Stable ref so the polling interval always sees the latest employees
   const employeesRef = useRef<Employee[]>([]);
@@ -202,6 +216,23 @@ export default function AttendanceSummary() {
       .then((text) => setEmployees(parseCSV(text)))
       .catch(() => console.error("Failed to load employees.csv"));
   }, []);
+
+  // ── Load distinct locations ────────────────────────────────────────────────
+  useEffect(() => {
+    fetch("/api/branch-locations")
+      .then(r => r.json())
+      .then(d => setLocations(d.locations ?? []))
+      .catch(() => console.error("Failed to load locations"));
+  }, []);
+
+  // ── Load staff for selected location ──────────────────────────────────────
+  useEffect(() => {
+    if (!selectedLocation) return;
+    fetch(`/api/branch-locations?location=${encodeURIComponent(selectedLocation)}`)
+      .then(r => r.json())
+      .then(d => setBranchStaff(d.staff ?? []))
+      .catch(() => console.error("Failed to load branch staff"));
+  }, [selectedLocation]);
 
   // ── Poll /api/test-scanner every 5 seconds ─────────────────────────────────
   const fetchScans = useCallback(async () => {
@@ -248,12 +279,31 @@ export default function AttendanceSummary() {
     setRawCount(null);
   }, []);
 
+  // ── Filter logs to the selected branch ────────────────────────────────────
+  // Match scanner short-names (CSV) against BranchStaff full names for the branch.
+  const branchFilteredLogs = logs.filter(r => {
+    if (r.name === 'Unknown') return false;
+    const shortName = r.name.toUpperCase();
+    return branchStaff.some(s => {
+      if (!s.name) return false;
+      const fullName = s.name.toUpperCase();
+      return fullName.includes(shortName) || shortName.includes(fullName);
+    });
+  });
+
   // ── Stats ──────────────────────────────────────────────────────────────────
-  const checkedInCount = logs.filter((r) => r.checkOutStr === null).length;
-  const checkedOutCount = logs.filter((r) => r.checkOutStr !== null).length;
-  const missingEmployees = employees.filter(
-    (e) => e.scannerRef && !seenScannerIds.includes(e.scannerRef)
-  );
+  const checkedInCount = branchFilteredLogs.filter((r) => r.checkOutStr === null).length;
+  const checkedOutCount = branchFilteredLogs.filter((r) => r.checkOutStr !== null).length;
+
+  // Missing = BranchStaff at selected location whose name doesn't appear in
+  // any scanned empName (case-insensitive partial match).
+  const scannedNames = branchFilteredLogs.map(r => r.name.toUpperCase());
+  const missingEmployees = branchStaff.filter(s => {
+    if (!s.name) return false;
+    const fullName = s.name.toUpperCase();
+    // Check if any scanned short-name appears in the full BranchStaff name
+    return !scannedNames.some(sn => fullName.includes(sn) || sn.includes(fullName));
+  });
 
   return (
     <div className="flex min-h-screen bg-blue-50">
@@ -267,6 +317,27 @@ export default function AttendanceSummary() {
               ← Back
             </button>
             <h1 className="text-3xl font-bold text-blue-800">Attendance Dashboard</h1>
+
+            {/* Location filter */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 shadow-sm">
+                <svg className="w-4 h-4 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <select
+                  value={selectedLocation}
+                  onChange={e => setSelectedLocation(e.target.value)}
+                  className="text-sm font-semibold text-blue-800 bg-transparent focus:outline-none cursor-pointer pr-1"
+                >
+                  {locations.map(loc => (
+                    <option key={loc} value={loc}>{loc}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
             <div className="ml-auto flex items-center gap-3">
               <button
@@ -303,7 +374,7 @@ export default function AttendanceSummary() {
           {/* ── Stat Cards ── */}
           <div className="grid grid-cols-4 gap-6 mb-8">
             <div className="bg-white rounded-xl shadow-md p-6 flex flex-col items-center">
-              <p className="text-4xl font-bold text-blue-600">{logs.length}</p>
+              <p className="text-4xl font-bold text-blue-600">{branchFilteredLogs.length}</p>
               <p className="text-sm text-gray-500 mt-1 font-medium">Employees Scanned</p>
             </div>
             <div className="bg-white rounded-xl shadow-md p-6 flex flex-col items-center">
@@ -341,9 +412,9 @@ export default function AttendanceSummary() {
           {/* ── Attendance Table ── */}
           <div className="bg-white rounded-xl shadow-md overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-800">Today&apos;s Attendance</h2>
+              <h2 className="text-xl font-bold text-gray-800">Today&apos;s Attendance — {selectedLocation}</h2>
               <span className="text-xs text-gray-400">
-                {logs.length} employee{logs.length !== 1 ? "s" : ""} · auto-refreshes every 5s
+                {branchFilteredLogs.length} employee{branchFilteredLogs.length !== 1 ? "s" : ""} · auto-refreshes every 5s
               </span>
             </div>
 
@@ -362,18 +433,18 @@ export default function AttendanceSummary() {
                   </tr>
                 </thead>
                 <tbody>
-                  {logs.length === 0 ? (
+                  {branchFilteredLogs.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-4 py-16 text-center text-gray-400 text-sm">
                         {scannerStatus === "idle"
                           ? "Connecting to thumbprint scanner…"
                           : scannerStatus === "error"
                           ? "No data yet — scanner is currently offline."
-                          : "No scans recorded today yet. Waiting for first thumbprint…"}
+                          : <span><strong className="text-blue-700">{selectedLocation}</strong> has not scanned yet.</span>}
                       </td>
                     </tr>
                   ) : (
-                    logs.map((record) => (
+                    branchFilteredLogs.map((record) => (
                       <tr
                         key={record.empNo}
                         className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
@@ -437,37 +508,44 @@ export default function AttendanceSummary() {
             </div>
           </div>
 
-          {/* ── Missing Employees ── */}
-          {missingEmployees.length > 0 && (
-            <div className="mt-6 bg-white rounded-xl shadow-md overflow-hidden">
-              <div className="px-6 py-4 border-b border-red-100 flex items-center justify-between bg-red-50">
+          {/* ── Missing Employees (from BranchStaff) ── */}
+          <div className="mt-6 bg-white rounded-xl shadow-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-red-100 flex items-center justify-between bg-red-50">
+              <div>
                 <h2 className="text-lg font-bold text-red-700">Missing Today</h2>
-                <span className="text-xs text-red-400">{missingEmployees.length} employee{missingEmployees.length !== 1 ? "s" : ""} not yet scanned</span>
+                <p className="text-xs text-red-400 mt-0.5">{selectedLocation} · Active staff not yet scanned</p>
               </div>
+              <span className="text-2xl font-bold text-red-500">{missingEmployees.length}</span>
+            </div>
+            {missingEmployees.length === 0 ? (
+              <div className="px-6 py-8 text-center text-green-600 font-medium text-sm">
+                ✓ All {selectedLocation} staff have scanned in today
+              </div>
+            ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="bg-red-600 text-white">
-                      <th className="px-4 py-3 text-left text-sm font-semibold">Employee</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold">Dept</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold">Position</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold">Scanner ID</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold">Nickname</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold">Department</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold">Role</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold">Location</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {missingEmployees.map((e, i) => (
-                      <tr key={`${e.scannerRef || e.name}-${i}`} className="border-b border-gray-100 hover:bg-red-50 transition-colors">
-                        <td className="px-4 py-3 text-sm font-semibold text-gray-800">{e.name}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{e.dept}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{e.position}</td>
-                        <td className="px-4 py-3 text-xs font-mono text-gray-400">{e.scannerRef}</td>
+                    {missingEmployees.map((s, i) => (
+                      <tr key={`${s.id}-${i}`} className="border-b border-gray-100 hover:bg-red-50 transition-colors">
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-800">{s.nickname ?? s.name}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{s.department ?? "—"}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{s.role ?? "—"}</td>
+                        <td className="px-4 py-3 text-xs text-gray-400">{s.location}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* ── Registered Employee Reference (collapsible) ── */}
           <details className="mt-6 bg-white rounded-xl shadow-md overflow-hidden">

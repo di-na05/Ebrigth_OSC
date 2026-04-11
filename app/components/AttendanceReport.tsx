@@ -7,11 +7,14 @@ import Sidebar from "./Sidebar";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface CSVEmployee {
-  name: string;
-  dept: string;
-  position: string;
-  scannerRef: string;
+interface BranchStaffMember {
+  id: number;
+  name: string | null;
+  employeeId: string | null;
+  department: string | null;
+  role: string | null;
+  email: string | null;
+  location: string | null;
 }
 
 interface LogEntry {
@@ -29,39 +32,6 @@ interface DayRow {
   clockOut: string | null;
   hoursWorked: number | null;
   attendance: "Present" | "Weekend" | "No Data";
-}
-
-// ─── CSV parser (same formula as AttendanceSummary) ────────────────────────────
-
-function parseCSVLine(line: string): string[] {
-  const cols: string[] = [];
-  let current = "";
-  let inQuotes = false;
-  for (const char of line) {
-    if (char === '"') { inQuotes = !inQuotes; }
-    else if (char === "," && !inQuotes) { cols.push(current.trim()); current = ""; }
-    else { current += char; }
-  }
-  cols.push(current.trim());
-  return cols.map(c => c.replace(/^"|"$/g, ""));
-}
-
-async function fetchEmployees(): Promise<CSVEmployee[]> {
-  const res = await fetch("/employees.csv");
-  const text = await res.text();
-  return text.trim().split("\n").slice(2).map(line => {
-    const cols = parseCSVLine(line);
-    if (cols.length < 4) return null;
-    const eid = (cols[8] ?? "").trim();
-    const parts = eid.split(" ");
-    const scannerRef = parts.length === 3 ? parts[1] + parts[0].substring(0, 2) + parts[2] : "";
-    return {
-      name: (cols[0] ?? "").trim(),
-      dept: (cols[1] ?? "").trim(),
-      position: (cols[3] ?? "").trim(),
-      scannerRef,
-    };
-  }).filter((e): e is CSVEmployee => !!e && e.name !== "" && e.scannerRef !== "");
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -117,25 +87,50 @@ export default function AttendanceReport() {
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1); // 1-based
 
-  const [employees, setEmployees] = useState<CSVEmployee[]>([]);
-  const [selectedEmpIdx, setSelectedEmpIdx] = useState(0);
+  // ── Branch / Location state ────────────────────────────────────────────────
+  const [locations, setLocations] = useState<string[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<string>("");
+  const [staff, setStaff] = useState<BranchStaffMember[]>([]);
+  const [selectedStaffId, setSelectedStaffId] = useState<number | null>(null);
+
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Load employee list once
+  // Load distinct locations once
   useEffect(() => {
-    fetchEmployees().then(setEmployees).catch(console.error);
+    fetch("/api/branch-locations")
+      .then(r => r.json())
+      .then(d => {
+        const locs: string[] = d.locations ?? [];
+        setLocations(locs);
+        if (locs.length > 0) setSelectedLocation(locs[0]);
+      })
+      .catch(console.error);
   }, []);
 
-  const selectedEmp = employees[selectedEmpIdx] ?? null;
+  // Load staff when location changes
+  useEffect(() => {
+    if (!selectedLocation) return;
+    fetch(`/api/branch-locations?location=${encodeURIComponent(selectedLocation)}`)
+      .then(r => r.json())
+      .then(d => {
+        const members: BranchStaffMember[] = d.staff ?? [];
+        setStaff(members);
+        setSelectedStaffId(members[0]?.id ?? null);
+        setLogs([]);
+      })
+      .catch(console.error);
+  }, [selectedLocation]);
 
-  // Fetch real logs whenever employee or month/year changes
+  const selectedStaff = staff.find(s => s.id === selectedStaffId) ?? null;
+
+  // Fetch logs when employee or month/year changes
   const fetchLogs = useCallback(async () => {
-    if (!selectedEmp) return;
+    if (!selectedStaff?.name) return;
     setLoading(true);
     try {
       const res = await fetch(
-        `/api/attendance-logs?empNo=${selectedEmp.scannerRef}&month=${selectedMonth}&year=${selectedYear}`
+        `/api/attendance-logs?staffName=${encodeURIComponent(selectedStaff.name)}&month=${selectedMonth}&year=${selectedYear}`
       );
       const data: LogEntry[] = await res.json();
       setLogs(Array.isArray(data) ? data : []);
@@ -144,7 +139,7 @@ export default function AttendanceReport() {
     } finally {
       setLoading(false);
     }
-  }, [selectedEmp, selectedMonth, selectedYear]);
+  }, [selectedStaff, selectedMonth, selectedYear]);
 
   useEffect(() => {
     fetchLogs();
@@ -207,33 +202,47 @@ export default function AttendanceReport() {
             <div className="bg-white rounded-xl shadow-md p-6 space-y-5">
               <h2 className="text-lg font-bold text-gray-800">Employee</h2>
 
-              {/* Employee dropdown */}
+              {/* Branch / Location dropdown */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Name</label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Branch</label>
                 <select
-                  value={selectedEmpIdx}
-                  onChange={e => setSelectedEmpIdx(Number(e.target.value))}
+                  value={selectedLocation}
+                  onChange={e => setSelectedLocation(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {employees.map((emp, i) => (
-                    <option key={emp.scannerRef} value={i}>{emp.name}</option>
+                  {locations.map(loc => (
+                    <option key={loc} value={loc}>{loc}</option>
                   ))}
                 </select>
               </div>
 
-              {selectedEmp && (
+              {/* Employee dropdown — filtered to selected branch */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Name</label>
+                <select
+                  value={selectedStaffId ?? ""}
+                  onChange={e => setSelectedStaffId(Number(e.target.value))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {staff.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedStaff && (
                 <>
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Department</label>
-                    <p className="text-sm font-medium text-gray-800">{selectedEmp.dept || "—"}</p>
+                    <p className="text-sm font-medium text-gray-800">{selectedStaff.department || "—"}</p>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Position</label>
-                    <p className="text-sm font-medium text-gray-800">{selectedEmp.position || "—"}</p>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Role</label>
+                    <p className="text-sm font-medium text-gray-800">{selectedStaff.role || "—"}</p>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Scanner ID</label>
-                    <p className="text-xs font-mono text-gray-400">{selectedEmp.scannerRef}</p>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Location</label>
+                    <p className="text-xs text-gray-400">{selectedStaff.location || "—"}</p>
                   </div>
                 </>
               )}
@@ -291,7 +300,7 @@ export default function AttendanceReport() {
                 <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                   <h2 className="text-xl font-bold text-gray-800">
                     {MONTHS[selectedMonth - 1]} {selectedYear}
-                    {selectedEmp && <span className="ml-2 text-gray-400 font-normal text-base">— {selectedEmp.name}</span>}
+                    {selectedStaff && <span className="ml-2 text-gray-400 font-normal text-base">— {selectedStaff.name}</span>}
                   </h2>
                   {loading && (
                     <span className="text-xs text-gray-400 animate-pulse">Loading…</span>
@@ -315,8 +324,8 @@ export default function AttendanceReport() {
                       {rows.length === 0 && !loading ? (
                         <tr>
                           <td colSpan={7} className="px-4 py-16 text-center text-gray-400 text-sm">
-                            {employees.length === 0
-                              ? "Loading employees…"
+                            {staff.length === 0
+                              ? "Select a branch to load employees…"
                               : "No working days in this period."}
                           </td>
                         </tr>
