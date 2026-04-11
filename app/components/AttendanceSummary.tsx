@@ -234,7 +234,7 @@ export default function AttendanceSummary() {
       .catch(() => console.error("Failed to load branch staff"));
   }, [selectedLocation]);
 
-  // ── Poll /api/test-scanner every 5 seconds ─────────────────────────────────
+  // ── Poll /api/attendance-today every 5 seconds (reads from DB, written by office sync script) ──
   const fetchScans = useCallback(async () => {
     // ── Midnight auto-reset ──────────────────────────────────────────────────
     const todayStr = getTodayStr();
@@ -246,18 +246,36 @@ export default function AttendanceSummary() {
     }
 
     try {
-      const res = await fetch("/api/test-scanner");
+      const res = await fetch("/api/attendance-today");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const raw: RawScanEvent[] = await res.json();
+      const dbRows: { empNo: string; empName: string; clockInTime: string; clockOutTime: string | null }[] = await res.json();
 
-      setRawCount(raw.length);
+      setRawCount(dbRows.length);
 
-      // Track all unique scanner IDs seen (for debug table)
-      const ids = [...new Set(raw.map((e) => e.employeeNoString).filter(Boolean))];
+      // Build AttendanceRecord from DB rows
+      const records: AttendanceRecord[] = dbRows.map(row => {
+        const emp = employeesRef.current.find(e => e.scannerRef === row.empNo);
+        const checkInDate = new Date(`1970-01-01T${row.clockInTime}`);
+        const checkOutDate = row.clockOutTime ? new Date(`1970-01-01T${row.clockOutTime}`) : null;
+        const isSaturday = new Date().getDay() === 6;
+        return {
+          empNo: row.empNo,
+          name: emp?.name ?? row.empName,
+          dept: emp?.dept ?? "—",
+          position: emp?.position ?? "—",
+          checkInTime: checkInDate,
+          checkInStr: row.clockInTime,
+          checkInStatus: getCheckInStatus(row.clockInTime),
+          checkOutTime: checkOutDate,
+          checkOutStr: row.clockOutTime ?? null,
+          checkOutStatus: row.clockOutTime ? getCheckOutStatus(row.clockOutTime, isSaturday) : null,
+          scanCount: row.clockOutTime ? 2 : 1,
+        };
+      });
+
+      const ids = dbRows.map(r => r.empNo).filter(Boolean);
       setSeenScannerIds(ids);
-
-      const built = buildAttendanceLogs(raw, employeesRef.current);
-      setLogs(built);
+      setLogs(records);
       setScannerStatus("ok");
       setLastUpdated(formatTime(new Date()));
     } catch {
@@ -398,12 +416,12 @@ export default function AttendanceSummary() {
                 d="M17 9V7a5 5 0 00-10 0v2a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2z" />
             </svg>
             <div className="text-sm text-indigo-700">
-              <strong>Thumbprint Scanner Active.</strong> 1st scan = <strong>Check-In</strong>. All subsequent scans update <strong>Check-Out</strong> to the latest time.
+              <strong>Attendance synced from office scanner.</strong> 1st scan = <strong>Check-In</strong>. All subsequent scans update <strong>Check-Out</strong> to the latest time.
               Records clear automatically at midnight.
               {lastUpdated && <span className="ml-2 text-indigo-400">Last synced: {lastUpdated}</span>}
               {rawCount !== null && (
                 <span className="ml-2 text-indigo-400">
-                  · Scanner returned <strong>{rawCount}</strong> event{rawCount !== 1 ? "s" : ""}, <strong>{logs.length}</strong> matched
+                  · <strong>{rawCount}</strong> record{rawCount !== 1 ? "s" : ""} in database today
                 </span>
               )}
             </div>
