@@ -48,3 +48,6 @@ dev.db
 next-env.d.ts
 
 /lib/generated/prisma
+
+# Vite build output
+dist/

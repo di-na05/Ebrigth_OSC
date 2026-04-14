@@ -9,13 +9,13 @@ datasource db {
 
 model User {
   id           Int      @id @default(autoincrement())
-  name         String?
   email        String   @unique
   passwordHash String
   role         String   @default("BRANCH_MANAGER")
   branchName   String?
-  status       String   @default("ACTIVE")
   createdAt    DateTime @default(now())
+  name         String?
+  status       String   @default("ACTIVE")
 }
 
 model ManpowerSchedule {
@@ -85,68 +85,47 @@ model BranchStaff {
   @@map("BranchStaff")
 }
 
+model AttendanceLog {
+  id                Int      @id @default(autoincrement())
+  date              String
+  empNo             String
+  empName           String
+  clockInTime       String
+  clockInSerialNo   String
+  clockInEmailSent  Boolean  @default(false)
+  clockOutTime      String?
+  clockOutSerialNo  String?
+  clockOutEmailSent Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([date, empNo])
+}
+
 model LeaveTransaction {
-  id                Int       @id @default(autoincrement())
-  EmployeeCode      String
-  LeaveTypeCode     String
-  LeaveTransId      String?
-  ApplyDate         DateTime?
-  ApplyReason       String?
-  ApplyStatus       String?
-  Attachment        String?
-  DayNo             Decimal?
-  HourNo            Decimal?
-  Days              String?
-  Source             String?
-  LeaveAdjustmentId String?
-  LeaveDate         DateTime? @db.Date
-  FromTime          DateTime? @db.Time()
-  ToTime            DateTime? @db.Time()
-  IsHourly          Boolean?
-  IsAdjustment      Boolean?
-  LeaveCreditId     String?
-  created_at        DateTime? @default(now())
-  ActionRemark      String?
+  id                 Int       @id @default(autoincrement())
+  EmployeeCode       String?   @db.VarChar(50)
+  LeaveTypeCode      String?   @db.VarChar(20)
+  LeaveTransId       String?   @db.VarChar(200)
+  ApplyDate          DateTime? @db.Timestamp(6)
+  ApplyReason        String?   @db.VarChar(500)
+  ApplyStatus        String?   @db.VarChar(10)
+  Attachment         String?   @db.VarChar(500)
+  DayNo              Decimal?  @db.Decimal(5, 1)
+  HourNo             Decimal?  @db.Decimal(5, 1)
+  Days               String?   @db.VarChar(10)
+  Source             String?   @db.VarChar(20)
+  LeaveAdjustmentId  String?   @db.VarChar(200)
+  LeaveDate          DateTime? @db.Date
+  FromTime           DateTime? @db.Time(6)
+  ToTime             DateTime? @db.Time(6)
+  IsHourly           Boolean?
+  IsAdjustment       Boolean?
+  LeaveCreditId      String?   @db.VarChar(200)
+  created_at         DateTime? @default(now()) @db.Timestamp(6)
+  ActionRemark       String?   @db.VarChar(500)
   RequiredThirdParty Boolean?
-  WorkingHours      Int?
+  WorkingHours       Int?
 
   @@unique([LeaveTransId, LeaveDate], map: "unique_leave_trans")
-}
-
-model MedicalLeave {
-  id            Int       @id @default(autoincrement())
-  employeeCode  String
-  name          String?
-  position      String?
-  dept          String?
-  branch        String?
-  leaveDate     DateTime  @db.Date
-  reason        String?
-  status        String?
-  days          String?
-  leaveTransId  String?   @unique
-  attachment    String?
-  createdAt     DateTime  @default(now())
-
-  @@map("MedicalLeave")
-}
-
-// Daily attendance log — one row per employee per day.
-// Email flags ensure clock-in/out emails fire exactly once regardless of
-// how many times the scanner route is polled.
-model AttendanceLog {
-  id                 Int      @id @default(autoincrement())
-  date               String   // "YYYY-MM-DD" — used as the day key
-  empNo              String   // scanner employeeNoString
-  empName            String
-  clockInTime        String   // HH:mm:ss display string
-  clockInSerialNo    String   // scanner serialNo that triggered clock-in
-  clockInEmailSent   Boolean  @default(false)
-  clockOutTime       String?  // null until they scan out
-  clockOutSerialNo   String?  // serialNo of the clock-out scan
-  clockOutEmailSent  Boolean  @default(false)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  @@unique([date, empNo]) // one row per person per day
 }

@@ -3,9 +3,21 @@ import { request } from 'urllib';
 
 export const dynamic = 'force-dynamic';
 
+interface ScannerUserInfo {
+    employeeNo: string;
+    name?: string;
+}
+
+interface UserInfoSearchResponse {
+    UserInfoSearch?: {
+        UserInfo?: ScannerUserInfo[];
+        responseStatusStrg?: string;
+    };
+}
+
 export async function GET() {
     try {
-        const url = 'http://192.168.100.64/ISAPI/AccessControl/UserInfo/Search?format=json';
+        const url = `${process.env.SCANNER_URL}/ISAPI/AccessControl/UserInfo/Search?format=json`;
         const allUsers: { employeeNo: string; name: string }[] = [];
         const seen = new Set<string>(); // deduplicate by employeeNo
         let position = 0;
@@ -14,7 +26,7 @@ export async function GET() {
         while (fetching) {
             const { data, res } = await request(url, {
                 method: 'POST',
-                digestAuth: 'admin:Admin@1234',
+                digestAuth: `${process.env.SCANNER_USER}:${process.env.SCANNER_PASS}`,
                 data: {
                     UserInfoSearchCond: {
                         searchID: Date.now().toString(),
@@ -29,7 +41,8 @@ export async function GET() {
 
             if (res.statusCode !== 200) break;
 
-            const batch: any[] = data?.UserInfoSearch?.UserInfo || [];
+            const parsed = data as UserInfoSearchResponse;
+            const batch: ScannerUserInfo[] = parsed?.UserInfoSearch?.UserInfo || [];
 
             for (const u of batch) {
                 if (u.employeeNo && !seen.has(u.employeeNo)) {
@@ -39,7 +52,7 @@ export async function GET() {
             }
 
             position += batch.length;
-            const status = data?.UserInfoSearch?.responseStatusStrg;
+            const status = parsed?.UserInfoSearch?.responseStatusStrg;
             if (status !== 'MORE' || batch.length === 0) fetching = false;
         }
 

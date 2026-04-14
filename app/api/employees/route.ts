@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma as _prisma } from '@/lib/prisma';
-const prisma = _prisma as any;
+import { prisma } from '@/lib/prisma';
 
 // Position level code (pos2)
 function getPositionCode(role: string): string {
@@ -90,7 +89,7 @@ export async function GET(request: Request) {
 
   if (search) {
     results = results.filter(
-      (e: any) =>
+      (e) =>
         e.fullName.toLowerCase().includes(search) ||
         e.email.toLowerCase().includes(search) ||
         e.employeeId.toLowerCase().includes(search)
@@ -157,7 +156,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(
-      { message: 'Employee registered successfully', data: toEmployee(newStaff as unknown as Record<string, unknown>) },
+      { message: 'Employee registered successfully', data: toEmployee(newStaff as Record<string, unknown>) },
       { status: 201 }
     );
   } catch (error) {
@@ -227,7 +226,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json({
       message: 'Employee updated successfully',
-      data: toEmployee(updated as unknown as Record<string, unknown>),
+      data: toEmployee(updated as Record<string, unknown>),
     });
   } catch (error) {
     console.error('Error updating employee:', error);
@@ -248,7 +247,7 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({
       message: 'Employee deleted successfully',
-      data: toEmployee(deleted as unknown as Record<string, unknown>),
+      data: toEmployee(deleted as Record<string, unknown>),
     });
   } catch (error) {
     console.error('Error deleting employee:', error);

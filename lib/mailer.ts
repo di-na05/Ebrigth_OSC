@@ -10,7 +10,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-export async function sendClockInEmail(to: string, name: string, time: string) {
+export async function sendClockInEmail(to: string, name: string, time: string): Promise<void> {
   await transporter.sendMail({
     from: `"Ebright Attendance" <${process.env.SMTP_USER}>`,
     to,
@@ -37,7 +37,7 @@ export async function sendClockInEmail(to: string, name: string, time: string) {
   });
 }
 
-export async function sendClockOutEmail(to: string, name: string, time: string) {
+export async function sendClockOutEmail(to: string, name: string, time: string): Promise<void> {
   await transporter.sendMail({
     from: `"Ebright Attendance" <${process.env.SMTP_USER}>`,
     to,

@@ -51,7 +51,7 @@ function loadEmployeesCSV(): CSVEmployee[] {
 
 // ─── Hikvision helpers ────────────────────────────────────────────────────────
 
-function formatHikvisionDate(date: Date) {
+function formatHikvisionDate(date: Date): string {
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}+08:00`;
 }
@@ -66,17 +66,27 @@ function todayStr(): string {
   return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
 }
 
+// ─── Hikvision event type ─────────────────────────────────────────────────────
+
+interface HikvisionEvent {
+  employeeNoString: string;
+  serialNo: number;
+  time: string;
+  major?: number;
+  minor?: number;
+}
+
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function GET() {
   try {
-    const url = 'http://192.168.100.147/ISAPI/AccessControl/AcsEvent?format=json';
+    const url = `${process.env.SCANNER_URL}/ISAPI/AccessControl/AcsEvent?format=json`;
 
     const now = new Date();
     const startOfToday = new Date(now);
     startOfToday.setHours(0, 0, 0, 0);
 
-    let allEvents: any[] = [];
+    let allEvents: HikvisionEvent[] = [];
     let currentPosition = 0;
     let isFetching = true;
     let safetyCounter = 0;
@@ -86,7 +96,7 @@ export async function GET() {
 
       const { data, res } = await request(url, {
         method: 'POST',
-        digestAuth: 'admin:Admin@1234',
+        digestAuth: `${process.env.SCANNER_USER}:${process.env.SCANNER_PASS}`,
         data: {
           AcsEventCond: {
             searchID: Date.now().toString(),
@@ -105,12 +115,12 @@ export async function GET() {
 
       if (res.statusCode !== 200) break;
 
-      const eventList = data.AcsEvent?.InfoList || [];
+      const eventList: HikvisionEvent[] = (data as { AcsEvent?: { InfoList?: HikvisionEvent[]; numOfMatches?: number } }).AcsEvent?.InfoList || [];
       if (eventList.length > 0) {
         allEvents.push(...eventList);
         currentPosition += eventList.length;
       }
-      if (eventList.length === 0 || data.AcsEvent?.numOfMatches === 0) isFetching = false;
+      if (eventList.length === 0 || (data as { AcsEvent?: { numOfMatches?: number } }).AcsEvent?.numOfMatches === 0) isFetching = false;
     }
 
     // Filter to valid employee scans only

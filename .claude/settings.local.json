@@ -1,11 +1,11 @@
 {
   "permissions": {
     "allow": [
+      "Bash(npm run:*)",
+      "Bash(node -e ':*)",
       "Bash(node --env-file=.env -e ':*)",
       "Bash(ls *.xlsx *.csv)",
-      "Bash(node -e ':*)",
       "Bash(npx tsc:*)",
-      "Bash(wc -l c:/Users/faiqs/OSC/Ebrigth_OSC/app/**/*.tsx c:/Users/faiqs/OSC/Ebrigth_OSC/app/**/*.ts)",
       "Bash(npx prisma:*)",
       "Bash(gh repo:*)"
     ]
